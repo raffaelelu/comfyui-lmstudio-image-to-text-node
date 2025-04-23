@@ -17,6 +17,7 @@ from PIL import Image
 import io
 import random
 
+
 class ExpoLmstudioUnified:
     @classmethod
     def INPUT_TYPES(cls):
@@ -136,7 +137,6 @@ class ExpoLmstudioUnified:
             error_message = f"Unexpected error: {str(e)}"
             print(error_message)
             return (error_message,)
-
 
 class ExpoLmstudioImageToText:
     @classmethod

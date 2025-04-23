@@ -1,3 +1,5 @@
 # Ignore the __pycache__ folder
 __pycache__/
 node.zip
+# ignove the comfy-env folder
+comfy-env/

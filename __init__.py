@@ -1,5 +1,4 @@
-from .expo_lmstudio_imagetotext import ExpoLmstudioImageToText, ExpoLmstudioTextGeneration
-from .expo_lmstudio_unified import ExpoLmstudioUnified
+from .expo_lmstudio_imagetotext import ExpoLmstudioImageToText, ExpoLmstudioTextGeneration, ExpoLmstudioUnified
 
 # Update these in your __init__.py file
 NODE_CLASS_MAPPINGS = {
