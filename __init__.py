@@ -1,7 +1,7 @@
 # __init__.py
 
 # Import all node classes from your single code file
-from .lmstudio_nodes import (
+from .expo_lmstudio_imagetotext import (
     ExpoLmstudioUnified,
     ExpoLmstudioImageToText,
     ExpoLmstudioTextGeneration,
