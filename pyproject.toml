@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-lmstudio-image-to-text-node"
 description = ""
-version = "1.1.6"
+version = "1.1.7"
 license = "LICENSE"
 dependencies = ["lmstudio>=1.2.0"]
 
