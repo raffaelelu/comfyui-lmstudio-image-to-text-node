@@ -1,4 +1,3 @@
-
 """
 @author: Matt John Powell
 @title: LM Studio Nodes for ComfyUI
@@ -144,8 +143,6 @@ class ExpoLmstudioImageToText:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
-                "user_prompt": ("STRING", {"default": "Describe this image in detail"}),
                 "model": ("STRING", {"default": "lmstudio-community/gemma-3-4b-it"}),
                 "system_prompt": ("STRING", {"default": "This is a chat between a user and an assistant. The assistant is an expert in describing images, with detail and accuracy"}),
                 "ip_address": ("STRING", {"default": "localhost"}),
@@ -153,6 +150,8 @@ class ExpoLmstudioImageToText:
                 "seed": ("INT", {"default": -1, "min": -1, "max": 0xffffffffffffffff}),
             },
             "optional": {
+                "image": ("IMAGE",),
+                "user_prompt": ("STRING", {"default": "Describe this image in detail"}),
                 "debug": ("BOOLEAN", {"default": False}),
             }
         }
@@ -162,7 +161,13 @@ class ExpoLmstudioImageToText:
     FUNCTION = "process_image"
     CATEGORY = "ComfyExpo/I2T"
 
-    def process_image(self, image, user_prompt, model, system_prompt, ip_address, port, seed, debug=False):
+    def process_image(self, model, system_prompt, ip_address, port, seed, image=None, user_prompt="Describe this image in detail", debug=False):
+        # Check if we have valid inputs
+        if image is None:
+            print("No image provided. The node will not run.")
+            return ("No image provided. Please connect an image input.",)
+            
+        # Set seed
         if seed == -1:
             seed = random.randint(0, 0xffffffffffffffff)
         random.seed(seed)
@@ -173,7 +178,8 @@ class ExpoLmstudioImageToText:
             print(f"Debug: System prompt: {system_prompt}")
             print(f"Debug: IP Address: {ip_address}")
             print(f"Debug: Port: {port}")
-            print(f"Debug: Image shape: {image.shape}")
+            if image is not None:
+                print(f"Debug: Image shape: {image.shape}")
 
         try:
             # Convert numpy array to PIL Image
@@ -246,13 +252,13 @@ class ExpoLmstudioTextGeneration:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "prompt": ("STRING", {"default": "Generate a creative story:"}),
                 "model": ("STRING", {"default": "lmstudio-community/gemma-3-4b-it"}),
                 "system_prompt": ("STRING", {"default": "You are a helpful AI assistant."}),
                 "ip_address": ("STRING", {"default": "localhost"}),
                 "port": ("INT", {"default": 1234, "min": 1, "max": 65535}),
                 "seed": ("INT", {"default": -1, "min": -1, "max": 0xffffffffffffffff}),
             },
+            "optional": {
             "optional": {
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
