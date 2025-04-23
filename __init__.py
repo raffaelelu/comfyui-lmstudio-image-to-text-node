@@ -1,12 +1,12 @@
-# __init__.py
+"""
+LM Studio Nodes for ComfyUI - Integration with local LLM models
+"""
 
-# Import all node classes from your single code file
-from .expo_lmstudio_imagetotext import (
+# Import all node classes from the main module file
+from .expo_lmstudio import (
     ExpoLmstudioUnified,
     ExpoLmstudioImageToText,
     ExpoLmstudioTextGeneration,
-    ExpoLmstudioModelManager,
-    ExpoLmstudioModelSelector,
     ExpoLmstudioSetup
 )
 
@@ -15,21 +15,15 @@ NODE_CLASS_MAPPINGS = {
     "Expo Lmstudio Unified": ExpoLmstudioUnified,
     "Expo Lmstudio Image To Text": ExpoLmstudioImageToText,
     "Expo Lmstudio Text Generation": ExpoLmstudioTextGeneration,
-    "Expo Lmstudio Model Manager": ExpoLmstudioModelManager,
-    "Expo Lmstudio Model Selector": ExpoLmstudioModelSelector,
-    "Expo Lmstudio Setup": ExpoLmstudioSetup,
-    # Use unique internal names if needed, but these should be fine
+    "Expo Lmstudio Setup": ExpoLmstudioSetup
 }
 
 # Define how ComfyUI maps the node name to its display name (shown in the UI)
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Expo Lmstudio Unified": "LM Studio Unified (Expo)", # Added (Expo) for clarity
-    "Expo Lmstudio Image To Text": "LM Studio I2T (Expo)",
-    "Expo Lmstudio Text Generation": "LM Studio Text Gen (Expo)",
-    "Expo Lmstudio Model Manager": "LM Studio Model Mgr (Expo)",
-    "Expo Lmstudio Model Selector": "LM Studio Model Sel (Expo)",
-    "Expo Lmstudio Setup": "LM Studio Setup (Expo)",
-    # Make these names descriptive for the UI
+    "Expo Lmstudio Unified": "LM Studio (Unified)",
+    "Expo Lmstudio Image To Text": "LM Studio (Image to Text)",
+    "Expo Lmstudio Text Generation": "LM Studio (Text Gen)",
+    "Expo Lmstudio Setup": "LM Studio (Setup)"
 }
 
 # Standard dictionary telling ComfyUI what this package provides
