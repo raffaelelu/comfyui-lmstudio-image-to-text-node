@@ -3,7 +3,7 @@ LM Studio Nodes for ComfyUI - Integration with local LLM models
 """
 
 # Import all node classes from the main module file
-from .expo_lmstudio import (
+from .expo_lmstudio_imagetotext import (
     ExpoLmstudioUnified,
     ExpoLmstudioImageToText,
     ExpoLmstudioTextGeneration,
