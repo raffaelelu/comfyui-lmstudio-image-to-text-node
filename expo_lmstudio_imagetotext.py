@@ -15,10 +15,12 @@ from PIL import Image
 import io
 import random
 import time
+import os
+import tempfile
 
 # Default models to use
 DEFAULT_LLM = "gemma-3-4b-it-qat"
-DEFAULT_VISION = "gemma-3-4b-it-qat"
+DEFAULT_VISION = "qwen2-vl-2b-instruct"
 
 # Try to import LM Studio SDK
 try:
@@ -105,34 +107,62 @@ class ExpoLmstudioUnified:
             
             # Process inputs
             if has_image and has_text:
-                # Process image to prepare for SDK
+                # Convert numpy array to PIL Image
                 pil_image = Image.fromarray(np.uint8(image[0]*255))
                 
-                # Save image to temporary memory buffer
-                buffered = io.BytesIO()
-                pil_image.save(buffered, format="JPEG")
-                image_bytes = buffered.getvalue()
+                # Create a temporary file
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
+                    temp_path = temp_file.name
+                    # Save to the temporary file
+                    pil_image.save(temp_path, format="JPEG")
                 
-                # Prepare image with SDK
-                image_handle = lms.prepare_image(image_bytes)
-                
-                # Add user message with both text and image
-                chat.add_user_message(text_input, images=[image_handle])
+                try:
+                    if debug:
+                        print(f"Debug: Saved image to temporary file: {temp_path}")
+                    
+                    # Use the file path method to prepare the image
+                    image_handle = lms.prepare_image(temp_path)
+                    
+                    # Add user message with both text and image
+                    chat.add_user_message(text_input, images=[image_handle])
+                    
+                    if debug:
+                        print(f"Debug: Added image to chat message")
+                finally:
+                    # Clean up the temporary file
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                        if debug:
+                            print(f"Debug: Removed temporary file: {temp_path}")
             
             elif has_image:
-                # Process image only
+                # Convert numpy array to PIL Image
                 pil_image = Image.fromarray(np.uint8(image[0]*255))
                 
-                # Save image to temporary memory buffer
-                buffered = io.BytesIO()
-                pil_image.save(buffered, format="JPEG")
-                image_bytes = buffered.getvalue()
+                # Create a temporary file
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
+                    temp_path = temp_file.name
+                    # Save to the temporary file
+                    pil_image.save(temp_path, format="JPEG")
                 
-                # Prepare image with SDK
-                image_handle = lms.prepare_image(image_bytes)
-                
-                # Add user message with image only
-                chat.add_user_message("Analyze this image:", images=[image_handle])
+                try:
+                    if debug:
+                        print(f"Debug: Saved image to temporary file: {temp_path}")
+                    
+                    # Use the file path method to prepare the image
+                    image_handle = lms.prepare_image(temp_path)
+                    
+                    # Add user message with image only
+                    chat.add_user_message("Analyze this image:", images=[image_handle])
+                    
+                    if debug:
+                        print(f"Debug: Added image to chat message")
+                finally:
+                    # Clean up the temporary file
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                        if debug:
+                            print(f"Debug: Removed temporary file: {temp_path}")
             
             elif has_text:
                 # Add user message with text only
@@ -235,40 +265,54 @@ class ExpoLmstudioImageToText:
                 if debug:
                     print(f"Debug: Model loaded in {time.time() - start_time:.2f}s")
             
-            # Process image to prepare for SDK
+            # Convert numpy array to PIL Image
             pil_image = Image.fromarray(np.uint8(image[0]*255))
             
-            # Save image to temporary memory buffer
-            buffered = io.BytesIO()
-            pil_image.save(buffered, format="JPEG")
-            image_bytes = buffered.getvalue()
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
+                temp_path = temp_file.name
+                # Save to the temporary file
+                pil_image.save(temp_path, format="JPEG")
             
-            # Prepare image with SDK
-            image_handle = lms.prepare_image(image_bytes)
-            
-            # Create a new chat
-            chat = lms.Chat(system_prompt)
-            
-            # Add user message with image
-            chat.add_user_message(user_prompt, images=[image_handle])
-            
-            # Configure generation parameters
-            config = {
-                "temperature": temperature,
-                "maxTokens": max_tokens,
-                "seed": seed
-            }
-            
-            if debug:
-                print(f"Debug: Sending request to LM Studio")
-            
-            # Generate response
-            result = model_obj.respond(chat, config=config)
-            
-            if debug:
-                print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
-                print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
-                print(f"Debug: Generation time: {result.stats.generation_time_sec}s")
+            try:
+                if debug:
+                    print(f"Debug: Saved image to temporary file: {temp_path}")
+                
+                # Use the file path method to prepare the image
+                image_handle = lms.prepare_image(temp_path)
+                
+                # Create a new chat
+                chat = lms.Chat(system_prompt)
+                
+                # Add user message with image
+                chat.add_user_message(user_prompt, images=[image_handle])
+                
+                if debug:
+                    print(f"Debug: Added image to chat message")
+                
+                # Configure generation parameters
+                config = {
+                    "temperature": temperature,
+                    "maxTokens": max_tokens,
+                    "seed": seed
+                }
+                
+                if debug:
+                    print(f"Debug: Sending request to LM Studio")
+                
+                # Generate response
+                result = model_obj.respond(chat, config=config)
+                
+                if debug:
+                    print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
+                    print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
+                    print(f"Debug: Generation time: {result.stats.generation_time_sec}s")
+            finally:
+                # Clean up the temporary file
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                    if debug:
+                        print(f"Debug: Removed temporary file: {temp_path}")
             
             # Unload model immediately if requested
             if auto_unload == "True" and unload_delay == 0:
