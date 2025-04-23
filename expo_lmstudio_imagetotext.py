@@ -259,7 +259,7 @@ class ExpoLmstudioTextGeneration:
                 "seed": ("INT", {"default": -1, "min": -1, "max": 0xffffffffffffffff}),
             },
             "optional": {
-            "optional": {
+                "prompt": ("STRING", {"default": "Generate a creative story:"}),
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
@@ -271,7 +271,13 @@ class ExpoLmstudioTextGeneration:
     FUNCTION = "generate_text"
     CATEGORY = "ComfyExpo/Text"
 
-    def generate_text(self, prompt, model, system_prompt, ip_address, port, seed, max_tokens=1000, temperature=0.7, debug=False):
+    def generate_text(self, model, system_prompt, ip_address, port, seed, prompt="Generate a creative story:", max_tokens=1000, temperature=0.7, debug=False):
+        # Check if we have valid inputs
+        if prompt.strip() == "":
+            print("No prompt provided. The node will not run.")
+            return ("No prompt provided. Please provide a text prompt.",)
+            
+        # Set seed
         if seed == -1:
             seed = random.randint(0, 0xffffffffffffffff)
         random.seed(seed)
