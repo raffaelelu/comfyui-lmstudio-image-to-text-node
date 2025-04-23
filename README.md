@@ -1,156 +1,218 @@
 # LM Studio Nodes for ComfyUI
 
-This extension provides custom nodes for ComfyUI that integrate LM Studio's capabilities. It offers two main functionalities:
+**Author:** Matt John Powell
 
-1. Image to Text: Generate text descriptions of images using vision models.
-2. Text Generation: Generate text based on a given prompt using language models.
+This extension provides a suite of custom nodes for ComfyUI that deeply integrate LM Studio's capabilities using the official `lmstudio` Python SDK. It allows you to leverage locally run models for various generative tasks directly within your ComfyUI workflows.
 
-Both nodes are designed to work with LM Studio's local API, providing flexible and customizable ways to enhance your ComfyUI workflows.
+The nodes offer functionalities including:
+
+1.  **Unified Generation:** Generate text from text prompts, image prompts, or both combined.
+2.  **Image to Text:** Generate detailed text descriptions of images using vision models.
+3.  **Text Generation:** Generate text based on a given prompt using language models, with streaming support.
+4.  **Model Management:** List available models, load models into memory with a TTL, and unload them.
+5.  **Model Selection:** Dynamically select models based on type (LLM/Vision) and text filters.
+6.  **Setup Assistance:** Helper node for SDK installation check, model listing, and download guidance.
 
 ## Workflow Example
 
 Here's an example of how the LM Studio nodes can be used in a ComfyUI workflow:
 
 ![LM Studio Nodes Workflow](workflow.png)
+*(Ensure this image accurately reflects a workflow using the new nodes)*
 
 ## Features
 
-- Generate text descriptions of images using LM Studio's vision models
-- Generate text based on prompts using LM Studio's language models
-- Customizable system prompts
-- Flexible model selection
-- Configurable server address and port
-- Debug mode for troubleshooting
+-   Utilizes the official `lmstudio` Python SDK for robust connection and interaction.
+-   Supports text-only, image-only (vision), and combined text+image inputs.
+-   Identifies models using `model_key` strings (e.g., `llama-3.2-1b-instruct`).
+-   Provides dedicated nodes for specific tasks (Image-to-Text, Text Generation).
+-   Includes nodes for managing model memory (Load/Unload/List).
+-   Offers a dynamic model selector node for easier workflow building.
+-   Setup node provides guidance for installing the SDK and getting models.
+-   Customizable system prompts for context setting.
+-   Control over generation parameters like `max_tokens`, `temperature`, and `seed`.
+-   Optional streaming output for the Text Generation node.
+-   Debug mode for detailed console logging.
+-   Automatic connection to the LM Studio server (no need to specify IP/Port in nodes).
 
 ## Installation
 
-1. Clone this repository into your ComfyUI's `custom_nodes` directory:
-   ```
-   cd /path/to/ComfyUI/custom_nodes
-   git clone https://github.com/mattjohnpowell/comfyui-lmstudio-nodes.git
-   ```
-2. Restart ComfyUI or reload custom nodes.
+1.  Navigate to your ComfyUI `custom_nodes` directory.
+2.  Clone this repository:
+    ```bash
+    cd /path/to/ComfyUI/custom_nodes
+    git clone [https://github.com/mattjohnpowell/comfyui-lmstudio-nodes.git](https://github.com/mattjohnpowell/comfyui-lmstudio-nodes.git) ComfyExpo-LMStudioNodes
+    # Using 'ComfyExpo-LMStudioNodes' as the directory name to avoid potential conflicts
+    ```
+3.  **Install Dependencies:** Ensure the `lmstudio` package is installed in ComfyUI's Python environment:
+    ```bash
+    # Activate your ComfyUI Python environment (if using venv, conda, etc.) first!
+    pip install lmstudio
+    ```
+    *(You might need to use a specific pip command depending on your ComfyUI setup, e.g., for portable builds)*
+4.  Restart ComfyUI.
 
 ## Usage
 
-### LM Studio Image To Text Node
+Add the nodes to your workflow by right-clicking the canvas and searching for their names (e.g., "LM Studio Unified (Expo)").
 
-Add the "LM Studio Image To Text" node to your ComfyUI workflow. Connect an image output to the "image" input of the node.
+---
 
-#### Inputs
+### LM Studio Unified (Expo)
 
-- **image** (required): The input image to be described.
-- **text_input** (required): The prompt for the image description. Default: "What's in this image?"
-- **model** (required): The name of the LM Studio vision model to use. Default: "billborkowski/llava-NousResearch_Nous-Hermes-2-Vision-GGUF"
-- **system_prompt** (required): The system prompt to set the context for the AI. Default: "This is a chat between a user and an assistant. The assistant is helping the user to describe an image."
-- **ip_address** (required): The IP address of your LM Studio server. Default: "localhost"
-- **port** (required): The port number of your LM Studio server. Default: 1234
-- **debug** (optional): Set to True for detailed logging. Default: False
+Handles text-only, image-only, or combined text+image generation.
 
-#### Output
+**Inputs:**
 
-- **Description**: The generated text description of the input image.
+-   `model_key` (STRING, required): The key of the LM Studio model to use (e.g., `llama-3.2-1b-instruct` or a vision model key). Default: `llama-3.2-1b-instruct`.
+-   `system_prompt` (STRING, required): System prompt for the AI. Default: "You are a helpful AI assistant."
+-   `seed` (INT, required): Seed for reproducibility (-1 for random). Default: -1.
+-   `image` (IMAGE, optional): Input image (requires a vision-capable `model_key`).
+-   `text_input` (STRING, optional): Text prompt. Default: "".
+-   `max_tokens` (INT, optional): Max tokens for the response. Default: 1000.
+-   `temperature` (FLOAT, optional): Generation temperature. Default: 0.7.
+-   `debug` (BOOLEAN, optional): Enable console logging. Default: False.
 
-### LM Studio Text Generation Node
+**Output:**
 
-Add the "LM Studio Text Generation" node to your ComfyUI workflow.
+-   `Generated Text` (STRING): The model's response.
 
-#### Inputs
+*(Note: At least one of `image` or `text_input` must be provided for the node to run).*
 
-- **prompt** (required): The input prompt for text generation.
-- **model** (required): The name of the LM Studio language model to use. Default: "TheBloke/Llama-2-13B-chat-GGUF"
-- **system_prompt** (required): The system prompt to set the context for the AI. Default: "You are a helpful AI assistant."
-- **ip_address** (required): The IP address of your LM Studio server. Default: "localhost"
-- **port** (required): The port number of your LM Studio server. Default: 1234
-- **max_tokens** (optional): Maximum number of tokens to generate. Default: 1000
-- **temperature** (optional): Controls randomness in generation. Default: 0.7
-- **debug** (optional): Set to True for detailed logging. Default: False
+---
 
-#### Output
+### LM Studio I2T (Expo)
 
-- **Generated Text**: The generated text based on the input prompt.
+Generates text descriptions for images using vision models.
+
+**Inputs:**
+
+-   `model_key` (STRING, required): The key of the **vision-capable** LM Studio model. Default: `qwen2-vl-2b-instruct`.
+-   `system_prompt` (STRING, required): System prompt for the AI. Default: "This is a chat between a user and an assistant. The assistant is an expert in describing images, with detail and accuracy".
+-   `seed` (INT, required): Seed for reproducibility (-1 for random). Default: -1.
+-   `image` (IMAGE, required): The input image to be described.
+-   `user_prompt` (STRING, optional): The prompt asking about the image. Default: "Describe this image in detail".
+-   `max_tokens` (INT, optional): Max tokens for the response. Default: 1000.
+-   `temperature` (FLOAT, optional): Generation temperature. Default: 0.7.
+-   `debug` (BOOLEAN, optional): Enable console logging. Default: False.
+
+**Output:**
+
+-   `Description` (STRING): The generated text description.
+
+---
+
+### LM Studio Text Gen (Expo)
+
+Generates text based on a text prompt using language models.
+
+**Inputs:**
+
+-   `model_key` (STRING, required): The key of the LM Studio language model. Default: `llama-3.2-1b-instruct`.
+-   `system_prompt` (STRING, required): System prompt for the AI. Default: "You are a helpful AI assistant.".
+-   `seed` (INT, required): Seed for reproducibility (-1 for random). Default: -1.
+-   `prompt` (STRING, optional): The input prompt for text generation. Default: "Generate a creative story:".
+-   `max_tokens` (INT, optional): Max tokens for the response. Default: 1000.
+-   `temperature` (FLOAT, optional): Generation temperature. Default: 0.7.
+-   `stream_output` (BOOLEAN, optional): Stream response fragments (Note: final output in ComfyUI is still the complete text). Default: False.
+-   `debug` (BOOLEAN, optional): Enable console logging. Default: False.
+
+**Output:**
+
+-   `Generated Text` (STRING): The generated text.
+
+*(Note: Requires a non-empty `prompt` to run).*
+
+---
+
+### LM Studio Model Mgr (Expo)
+
+Manages models loaded via the LM Studio SDK.
+
+**Inputs:**
+
+-   `action` (COMBO, required): Action to perform (`LIST`, `LOAD`, `UNLOAD`). Default: `LIST`.
+-   `model_key` (STRING, optional): The model key to load or unload. Required for `LOAD`/`UNLOAD`. Default: "".
+-   `model_type` (COMBO, optional): Filter models by type (`ALL`, `LLM`, `EMBEDDING`). Default: `ALL`.
+-   `load_ttl` (INT, optional): Time-to-live (seconds) for loaded models (how long to keep in memory after last use). Used with `LOAD`. Default: 3600.
+-   `debug` (BOOLEAN, optional): Enable console logging. Default: False.
+
+**Output:**
+
+-   `Result` (STRING): Confirmation message or list of models.
+
+---
+
+### LM Studio Model Sel (Expo)
+
+Dynamically provides a model key based on filters, useful for connecting to other nodes.
+
+**Inputs:**
+
+-   `model_type` (COMBO, required): Type of model to list (`LLM`, `Vision`). Default: `LLM`.
+-   `filter_text` (STRING, optional): Text to filter model names/keys by. Default: "".
+
+**Output:**
+
+-   `Model Key` (STRING): The `model_key` of the first matching model (sorted alphabetically), or a default if none match.
+
+*(Note: This node attempts to list models available via the SDK at workflow load time. Ensure LM Studio server is running when building workflows).*
+
+---
+
+### LM Studio Setup (Expo)
+
+Provides helper actions related to SDK setup and model discovery.
+
+**Inputs:**
+
+-   `action` (COMBO, required): Action to perform (`INSTALL SDK`, `GET MODEL`, `LIST MODELS`). Default: `LIST MODELS`.
+-   `model_key` (STRING, required): Model key relevant to the action (used for `GET MODEL`). Default: `llama-3.2-1b-instruct`.
+
+**Output:**
+
+-   `Result` (STRING): Status message, command guidance, or list of models.
+
+*(Note: `INSTALL SDK` attempts `pip install lmstudio`. `GET MODEL` provides instructions for using the `lms` CLI tool).*
+
+---
 
 ## LM Studio Setup
 
-1. Install and run LM Studio on your local machine.
-2. Load appropriate models in LM Studio (vision models for Image to Text, language models for Text Generation).
-3. Ensure the LM Studio API is running and accessible (default: http://localhost:1234).
+1.  Install and run [LM Studio](https://lmstudio.ai/) on your machine.
+2.  Download desired models within LM Studio (ensure you have vision models for image tasks).
+3.  Go to the "Server" tab (icon looks like `<->`) in LM Studio.
+4.  Select a model to load and click **Start Server**.
+5.  **The LM Studio server *must* be running** for these ComfyUI nodes to connect and function.
 
 ## Notes
 
-- This extension is adapted from the LM Studio code examples for image-to-text and text generation.
-- The `model` parameter doesn't have to be changed from its default value, but it's useful to set it explicitly when sharing workflows to ensure consistency.
-- Adjust the `ip_address` and `port` if your LM Studio instance is running on a different machine or port.
+-   These nodes use the official `lmstudio` Python SDK, which handles the connection to your running LM Studio server automatically (typically `localhost:1234`). There's no need to input IP/Port in the nodes themselves.
+-   Use the `model_key` (found in LM Studio, e.g., `Org/ModelName-Format`) as the identifier in the `model_key` inputs.
+-   The `seed` input allows for reproducible outputs. Set to -1 for a random seed on each run.
 
-## Original LM Studio Code
+## SDK Usage
 
-This extension is adapted from LM Studio code examples. Here's the original image-to-text example:
-
-```python
-# Adapted from OpenAI's Vision example
-from openai import OpenAI
-import base64
-import requests
-
-# Point to the local server
-client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
-
-# Ask the user for a path on the filesystem:
-path = input("Enter a local filepath to an image: ")
-
-# Read the image and encode it to base64:
-base64_image = ""
-try:
-    image = open(path.replace("'", ""), "rb").read()
-    base64_image = base64.b64encode(image).decode("utf-8")
-except:
-    print("Couldn't read the image. Make sure the path is correct and the file exists.")
-    exit()
-
-completion = client.chat.completions.create(
-    model="moondream/moondream2-gguf",
-    messages=[
-        {
-            "role": "system",
-            "content": "This is a chat between a user and an assistant. The assistant is helping the user to describe an image.",
-        },
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "What's in this image?"},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_image}"
-                    },
-                },
-            ],
-        }
-    ],
-    max_tokens=1000,
-    stream=True
-)
-
-for chunk in completion:
-    if chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end="", flush=True)
-```
+These nodes leverage the official `lmstudio` Python SDK, replacing the previous method of interacting via the OpenAI-compatible API endpoint directly. This provides more robust integration and access to SDK-specific features.
 
 ## Troubleshooting
 
 If you encounter any issues:
-1. Enable debug mode by setting the `debug` input to True.
-2. Check the ComfyUI console for error messages and debug output.
-3. Verify that LM Studio is running and accessible at the specified IP address and port.
-4. Ensure you're using compatible models in LM Studio (vision models for Image to Text, language models for Text Generation).
 
-For further assistance, please open an issue on the GitHub repository.
+1.  Enable the `debug` input (set to True) on the relevant node(s).
+2.  Check the ComfyUI console for error messages and detailed debug output from the nodes.
+3.  Verify that the **LM Studio application is running** and the **Server has been started** with a model loaded.
+4.  Ensure the `model_key` you are providing exists in your LM Studio library and is compatible with the node's task (e.g., a vision model for the I2T node).
+5.  Confirm the `lmstudio` Python package is correctly installed in your ComfyUI environment.
+
+For further assistance, please open an issue on the GitHub repository: [https://github.com/mattjohnpowell/comfyui-lmstudio-nodes](https://github.com/mattjohnpowell/comfyui-lmstudio-nodes)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the `LICENSE` file for details.
 
 ## Acknowledgments
 
-- This project is built upon the ComfyUI framework.
-- Inspired by and adapted from LM Studio's image-to-text and text generation example code.
+-   Built upon the ComfyUI framework.
+-   Utilizes the official LM Studio Python SDK.
+-   Inspired by LM Studio's capabilities and examples.
