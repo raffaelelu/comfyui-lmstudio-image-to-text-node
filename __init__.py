@@ -7,8 +7,15 @@ from .expo_lmstudio_imagetotext import (
     ExpoLmstudioUnified,
     ExpoLmstudioImageToText,
     ExpoLmstudioTextGeneration,
-    ExpoLmstudioSetup
+    ExpoLmstudioSetup,
+    refresh_available_models
 )
+
+# Try to load models at initialization time
+try:
+    refresh_available_models()
+except Exception as e:
+    print(f"Note: Could not pre-load LM Studio models. They will be loaded when needed: {str(e)}")
 
 # Define how ComfyUI maps the node name (used in backend) to the class
 NODE_CLASS_MAPPINGS = {
