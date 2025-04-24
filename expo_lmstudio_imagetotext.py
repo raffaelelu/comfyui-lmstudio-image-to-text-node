@@ -49,7 +49,6 @@ class ExpoLmstudioUnified:
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
-                "enabled": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -57,12 +56,11 @@ class ExpoLmstudioUnified:
     RETURN_NAMES = ("Generated Text",)
     FUNCTION = "process_input"
     CATEGORY = "ComfyExpo/LMStudio"
+    
+    def IS_CHANGED(self, **kwargs):
+        return float("NaN")  # Tell ComfyUI to process this node the usual way
 
-    def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, enabled=True):
-        # Skip processing if disabled
-        if not enabled:
-            return ("Node is disabled. Enable it to process inputs.",)
-        
+    def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
@@ -219,7 +217,6 @@ class ExpoLmstudioImageToText:
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
-                "enabled": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -227,12 +224,11 @@ class ExpoLmstudioImageToText:
     RETURN_NAMES = ("Description",)
     FUNCTION = "process_image"
     CATEGORY = "ComfyExpo/I2T"
+    
+    def IS_CHANGED(self, **kwargs):
+        return float("NaN")  # Tell ComfyUI to process this node the usual way
 
-    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, enabled=True):
-        # Skip processing if disabled
-        if not enabled:
-            return ("Node is disabled. Enable it to process inputs.",)
-        
+    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
@@ -346,7 +342,6 @@ class ExpoLmstudioTextGeneration:
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
-                "enabled": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -354,12 +349,11 @@ class ExpoLmstudioTextGeneration:
     RETURN_NAMES = ("Generated Text",)
     FUNCTION = "generate_text"
     CATEGORY = "ComfyExpo/Text"
+    
+    def IS_CHANGED(self, **kwargs):
+        return float("NaN")  # Tell ComfyUI to process this node the usual way
 
-    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, enabled=True):
-        # Skip processing if disabled
-        if not enabled:
-            return ("Node is disabled. Enable it to process inputs.",)
-        
+    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
