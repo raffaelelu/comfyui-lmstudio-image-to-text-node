@@ -7,6 +7,7 @@
 2. Text Generation: Generates text based on a given prompt using language models.
 3. Unified Node: A versatile node that can handle both image and text inputs.
 All nodes leverage the LM Studio Python SDK for better performance and reliability.
+Includes a fallback mechanism to use any loaded model if the specified model fails.
 """
 
 import base64
@@ -32,6 +33,62 @@ except ImportError:
     HAS_SDK = False
     print("LM Studio SDK not found. Please install it using: pip install lmstudio")
 
+# --- Helper function to get model with fallback ---
+def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False):
+    """
+    Attempts to get the specified model. If it fails, tries to find and use
+    any currently loaded model in LM Studio as a fallback.
+    Returns the model object or raises an exception if no model can be obtained.
+    """
+    model_obj = None
+    try:
+        start_time = time.time()
+        if auto_unload == "True" and unload_delay > 0:
+            # Use TTL for delayed unloading
+            model_obj = lms.llm(model_key, ttl=unload_delay)
+            if debug:
+                print(f"Debug: Primary model '{model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
+        else:
+            # Normal loading
+            model_obj = lms.llm(model_key)
+            if debug:
+                print(f"Debug: Primary model '{model_key}' loaded in {time.time() - start_time:.2f}s")
+        return model_obj
+
+    except Exception as e:
+        print(f"Warning: Failed to load or get primary model '{model_key}': {e}")
+        print("Attempting to find a loaded model as fallback...")
+
+        try:
+            # Try to find any loaded models
+            loaded_models = lms.server.get_loaded_models()
+
+            if loaded_models:
+                # Use the first loaded model as fallback
+                fallback_model_key = loaded_models[0]['model']
+                print(f"Debug: Found loaded model '{fallback_model_key}'. Attempting to use as fallback.")
+
+                # Load/get the fallback model, applying the same unload settings
+                start_time = time.time()
+                if auto_unload == "True" and unload_delay > 0:
+                     model_obj = lms.llm(fallback_model_key, ttl=unload_delay)
+                     if debug:
+                         print(f"Debug: Fallback model '{fallback_model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
+                else:
+                     model_obj = lms.llm(fallback_model_key)
+                     if debug:
+                         print(f"Debug: Fallback model '{fallback_model_key}' loaded in {time.time() - start_time:.2f}s")
+
+                print(f"Info: Successfully obtained fallback model '{fallback_model_key}'.")
+                return model_obj
+            else:
+                raise Exception(f"Failed to load primary model '{model_key}' and no other models are currently loaded in LM Studio.")
+
+        except Exception as fallback_e:
+            # If fallback also fails or no models are loaded
+            raise Exception(f"Error: Failed to load primary model '{model_key}' and fallback attempt failed. Details: {fallback_e}")
+
+
 class ExpoLmstudioUnified:
     @classmethod
     def INPUT_TYPES(cls):
@@ -56,149 +113,116 @@ class ExpoLmstudioUnified:
     RETURN_NAMES = ("Generated Text",)
     FUNCTION = "process_input"
     CATEGORY = "ComfyExpo/LMStudio"
-    
+
     def IS_CHANGED(self, **kwargs):
-        return float("NaN")  # Tell ComfyUI to process this node the usual way
+        return float("NaN") # Tell ComfyUI to process this node the usual way
 
     def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
-        
+
         # Check if we have valid inputs
         has_image = image is not None
         has_text = text_input.strip() != ""
-        
+
         # If no inputs are provided, return a message
         if not has_image and not has_text:
             return ("No inputs provided. Please connect an image or provide text input.",)
-        
+
         # Set seed
         if seed == -1:
             seed = random.randint(0, 0xffffffffffffffff)
         random.seed(seed)
-        
+
         if debug:
             print(f"Debug: Starting unified process_input method")
             print(f"Debug: Has image input: {has_image}")
             print(f"Debug: Has text input: {has_text}")
-            print(f"Debug: Model: {model_key}")
+            print(f"Debug: Requested Model: {model_key}")
             print(f"Debug: Auto unload: {auto_unload}, Unload delay: {unload_delay}s")
 
+        temp_path = None # Initialize temp_path for cleanup
+
         try:
-            # Get model reference with TTL if auto_unload is enabled
-            start_time = time.time()
-            
-            if auto_unload == "True" and unload_delay > 0:
-                # Use TTL for delayed unloading
-                model = lms.llm(model_key, ttl=unload_delay)
-                if debug:
-                    print(f"Debug: Model loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
-            else:
-                # Normal loading
-                model = lms.llm(model_key)
-                if debug:
-                    print(f"Debug: Model loaded in {time.time() - start_time:.2f}s")
-            
+            # --- Use helper function to get model with fallback ---
+            model = get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug)
+
             # Create a new chat
             chat = lms.Chat(system_prompt)
-            
+
             # Process inputs
-            if has_image and has_text:
+            if has_image:
                 # Convert numpy array to PIL Image
                 pil_image = Image.fromarray(np.uint8(image[0]*255))
-                
+
                 # Create a temporary file
                 with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
                     temp_path = temp_file.name
                     # Save to the temporary file
                     pil_image.save(temp_path, format="JPEG")
-                
-                try:
-                    if debug:
-                        print(f"Debug: Saved image to temporary file: {temp_path}")
-                    
-                    # Use the file path method to prepare the image
-                    image_handle = lms.prepare_image(temp_path)
-                    
-                    # Add user message with both text and image
-                    chat.add_user_message(text_input, images=[image_handle])
-                    
-                    if debug:
-                        print(f"Debug: Added image to chat message")
-                finally:
-                    # Clean up the temporary file
-                    if os.path.exists(temp_path):
-                        os.unlink(temp_path)
-                        if debug:
-                            print(f"Debug: Removed temporary file: {temp_path}")
-            
-            elif has_image:
-                # Convert numpy array to PIL Image
-                pil_image = Image.fromarray(np.uint8(image[0]*255))
-                
-                # Create a temporary file
-                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                    temp_path = temp_file.name
-                    # Save to the temporary file
-                    pil_image.save(temp_path, format="JPEG")
-                
-                try:
-                    if debug:
-                        print(f"Debug: Saved image to temporary file: {temp_path}")
-                    
-                    # Use the file path method to prepare the image
-                    image_handle = lms.prepare_image(temp_path)
-                    
-                    # Add user message with image only
-                    chat.add_user_message("Analyze this image:", images=[image_handle])
-                    
-                    if debug:
-                        print(f"Debug: Added image to chat message")
-                finally:
-                    # Clean up the temporary file
-                    if os.path.exists(temp_path):
-                        os.unlink(temp_path)
-                        if debug:
-                            print(f"Debug: Removed temporary file: {temp_path}")
-            
+
+                if debug:
+                    print(f"Debug: Saved image to temporary file: {temp_path}")
+
+                # Use the file path method to prepare the image
+                image_handle = lms.prepare_image(temp_path)
+
+                # Add user message with image and optional text
+                user_message_content = [image_handle]
+                if has_text:
+                     user_message_content.insert(0, text_input) # Add text before image handle
+
+                chat.add_user_message(*user_message_content)
+
+                if debug:
+                    print(f"Debug: Added image(s) and text (if any) to chat message")
+
             elif has_text:
                 # Add user message with text only
                 chat.add_user_message(text_input)
-            
+
             # Configure generation parameters
             config = {
                 "temperature": temperature,
                 "maxTokens": max_tokens,
                 "seed": seed
             }
-            
+
             if debug:
-                print(f"Debug: Sending request to LM Studio with config: {config}")
-            
-            # Generate response
+                print(f"Debug: Sending request to LM Studio with config: {config}")            # Generate response
             result = model.respond(chat, config=config)
-            
+
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
                 print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
-                print(f"Debug: Generation time: {result.stats.generation_time_sec}s")
-            
-            # Unload model immediately if requested
+                print(f"Debug: Time to first token: {result.stats.time_to_first_token_sec}s")
+
+            # Unload model immediately if requested (TTL handles delayed unloading)
             if auto_unload == "True" and unload_delay == 0:
                 try:
                     if debug:
-                        print(f"Debug: Unloading model immediately: {model_key}")
+                        print(f"Debug: Unloading model immediately.")
                     model.unload()
                 except Exception as unload_err:
                     print(f"Warning: Failed to unload model: {unload_err}")
-            
+
             return (result.content,)
 
         except Exception as e:
             error_message = f"Error processing with LM Studio: {str(e)}"
             print(error_message)
             return (error_message,)
+        finally:
+            # Clean up the temporary image file if it was created
+            if temp_path and os.path.exists(temp_path):
+                 try:
+                    os.unlink(temp_path)
+                    if debug:
+                        print(f"Debug: Removed temporary file: {temp_path}")
+                 except Exception as cleanup_err:
+                    print(f"Warning: Failed to remove temporary file {temp_path}: {cleanup_err}")
+
 
 class ExpoLmstudioImageToText:
     @classmethod
@@ -224,108 +248,102 @@ class ExpoLmstudioImageToText:
     RETURN_NAMES = ("Description",)
     FUNCTION = "process_image"
     CATEGORY = "ComfyExpo/I2T"
-    
+
     def IS_CHANGED(self, **kwargs):
-        return float("NaN")  # Tell ComfyUI to process this node the usual way
+        return float("NaN") # Tell ComfyUI to process this node the usual way
 
     def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
-        
+
         # Set seed
         if seed == -1:
             seed = random.randint(0, 0xffffffffffffffff)
         random.seed(seed)
-        
+
         if debug:
             print(f"Debug: Starting process_image method")
-            print(f"Debug: Text input: {user_prompt}")
-            print(f"Debug: Model: {model_key}")
+            print(f"Debug: User prompt: {user_prompt}")
+            print(f"Debug: Requested Model: {model_key}")
             print(f"Debug: System prompt: {system_prompt}")
             print(f"Debug: Auto unload: {auto_unload}, Unload delay: {unload_delay}s")
             print(f"Debug: Image shape: {image.shape}")
 
+        temp_path = None # Initialize temp_path for cleanup
+
         try:
-            # Get model reference with TTL if auto_unload is enabled
-            start_time = time.time()
-            
-            if auto_unload == "True" and unload_delay > 0:
-                # Use TTL for delayed unloading
-                model_obj = lms.llm(model_key, ttl=unload_delay)
-                if debug:
-                    print(f"Debug: Model loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
-            else:
-                # Normal loading
-                model_obj = lms.llm(model_key)
-                if debug:
-                    print(f"Debug: Model loaded in {time.time() - start_time:.2f}s")
-            
+            # --- Use helper function to get model with fallback ---
+            model_obj = get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug)
+
             # Convert numpy array to PIL Image
             pil_image = Image.fromarray(np.uint8(image[0]*255))
-            
+
             # Create a temporary file
             with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
                 temp_path = temp_file.name
                 # Save to the temporary file
                 pil_image.save(temp_path, format="JPEG")
-            
-            try:
-                if debug:
-                    print(f"Debug: Saved image to temporary file: {temp_path}")
-                
-                # Use the file path method to prepare the image
-                image_handle = lms.prepare_image(temp_path)
-                
-                # Create a new chat
-                chat = lms.Chat(system_prompt)
-                
-                # Add user message with image
-                chat.add_user_message(user_prompt, images=[image_handle])
-                
-                if debug:
-                    print(f"Debug: Added image to chat message")
-                
-                # Configure generation parameters
-                config = {
-                    "temperature": temperature,
-                    "maxTokens": max_tokens,
-                    "seed": seed
-                }
-                
-                if debug:
-                    print(f"Debug: Sending request to LM Studio")
-                
-                # Generate response
-                result = model_obj.respond(chat, config=config)
-                
-                if debug:
-                    print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
-                    print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
-                    print(f"Debug: Generation time: {result.stats.generation_time_sec}s")
-            finally:
-                # Clean up the temporary file
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-                    if debug:
-                        print(f"Debug: Removed temporary file: {temp_path}")
-            
-            # Unload model immediately if requested
+
+            if debug:
+                print(f"Debug: Saved image to temporary file: {temp_path}")
+
+            # Use the file path method to prepare the image
+            image_handle = lms.prepare_image(temp_path)
+
+            # Create a new chat
+            chat = lms.Chat(system_prompt)
+
+            # Add user message with image and prompt
+            chat.add_user_message(user_prompt, images=[image_handle])
+
+            if debug:
+                print(f"Debug: Added image and prompt to chat message")
+
+            # Configure generation parameters
+            config = {
+                "temperature": temperature,
+                "maxTokens": max_tokens,
+                "seed": seed
+            }
+
+            if debug:
+                print(f"Debug: Sending request to LM Studio")
+
+            # Generate response
+            result = model_obj.respond(chat, config=config)
+
+            if debug:
+                print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
+                print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
+                print(f"Debug: Time to first token: {result.stats.time_to_first_token_sec}s")
+
+            # Unload model immediately if requested (TTL handles delayed unloading)
             if auto_unload == "True" and unload_delay == 0:
                 try:
                     if debug:
-                        print(f"Debug: Unloading model immediately: {model_key}")
+                        print(f"Debug: Unloading model immediately.")
                     model_obj.unload()
                 except Exception as unload_err:
                     print(f"Warning: Failed to unload model: {unload_err}")
-            
+
             return (result.content,)
 
         except Exception as e:
             error_message = f"Error processing with LM Studio: {str(e)}"
             print(error_message)
             return (error_message,)
-        
+        finally:
+            # Clean up the temporary image file if it was created
+            if temp_path and os.path.exists(temp_path):
+                 try:
+                    os.unlink(temp_path)
+                    if debug:
+                        print(f"Debug: Removed temporary file: {temp_path}")
+                 except Exception as cleanup_err:
+                    print(f"Warning: Failed to remove temporary file {temp_path}: {cleanup_err}")
+
+
 class ExpoLmstudioTextGeneration:
     @classmethod
     def INPUT_TYPES(cls):
@@ -349,15 +367,15 @@ class ExpoLmstudioTextGeneration:
     RETURN_NAMES = ("Generated Text",)
     FUNCTION = "generate_text"
     CATEGORY = "ComfyExpo/Text"
-    
+
     def IS_CHANGED(self, **kwargs):
-        return float("NaN")  # Tell ComfyUI to process this node the usual way
+        return float("NaN") # Tell ComfyUI to process this node the usual way
 
     def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
-        
+
         # Set seed
         if seed == -1:
             seed = random.randint(0, 0xffffffffffffffff)
@@ -366,60 +384,49 @@ class ExpoLmstudioTextGeneration:
         if debug:
             print(f"Debug: Starting generate_text method")
             print(f"Debug: Prompt: {prompt}")
-            print(f"Debug: Model: {model_key}")
+            print(f"Debug: Requested Model: {model_key}")
             print(f"Debug: System prompt: {system_prompt}")
             print(f"Debug: Auto unload: {auto_unload}, Unload delay: {unload_delay}s")
             print(f"Debug: Max tokens: {max_tokens}")
             print(f"Debug: Temperature: {temperature}")
 
         try:
-            # Get model reference with TTL if auto_unload is enabled
-            start_time = time.time()
-            
-            if auto_unload == "True" and unload_delay > 0:
-                # Use TTL for delayed unloading
-                model_obj = lms.llm(model_key, ttl=unload_delay)
-                if debug:
-                    print(f"Debug: Model loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
-            else:
-                # Normal loading
-                model_obj = lms.llm(model_key)
-                if debug:
-                    print(f"Debug: Model loaded in {time.time() - start_time:.2f}s")
-            
+            # --- Use helper function to get model with fallback ---
+            model_obj = get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug)
+
             # Create a new chat
             chat = lms.Chat(system_prompt)
-            
+
             # Add user message
             chat.add_user_message(prompt)
-            
+
             # Configure generation parameters
             config = {
                 "temperature": temperature,
                 "maxTokens": max_tokens,
                 "seed": seed
             }
-            
+
             if debug:
                 print(f"Debug: Sending request to LM Studio")
-            
+
             # Generate response
             result = model_obj.respond(chat, config=config)
-            
+
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
                 print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
-                print(f"Debug: Generation time: {result.stats.generation_time_sec}s")
-            
-            # Unload model immediately if requested
+                print(f"Debug: Time to first token: {result.stats.time_to_first_token_sec}s")
+
+            # Unload model immediately if requested (TTL handles delayed unloading)
             if auto_unload == "True" and unload_delay == 0:
                 try:
                     if debug:
-                        print(f"Debug: Unloading model immediately: {model_key}")
+                        print(f"Debug: Unloading model immediately.")
                     model_obj.unload()
                 except Exception as unload_err:
                     print(f"Warning: Failed to unload model: {unload_err}")
-            
+
             return (result.content,)
 
         except Exception as e:
