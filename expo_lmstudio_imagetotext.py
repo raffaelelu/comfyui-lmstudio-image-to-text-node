@@ -18,6 +18,7 @@ import random
 import time
 import os
 import tempfile
+import concurrent.futures
 
 # Default models to use
 DEFAULT_LLM = "gemma-3-4b-it-qat"
@@ -106,6 +107,7 @@ class ExpoLmstudioUnified:
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
+                "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
             }
         }
 
@@ -117,7 +119,7 @@ class ExpoLmstudioUnified:
     def IS_CHANGED(self, **kwargs):
         return float("NaN") # Tell ComfyUI to process this node the usual way
 
-    def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False):
+    def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
@@ -147,8 +149,6 @@ class ExpoLmstudioUnified:
         try:
             # --- Use helper function to get model with fallback ---
             model = get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug)
-
-            # Create a new chat
             chat = lms.Chat(system_prompt)
 
             # Process inputs
@@ -190,8 +190,16 @@ class ExpoLmstudioUnified:
             }
 
             if debug:
-                print(f"Debug: Sending request to LM Studio with config: {config}")            # Generate response
-            result = model.respond(chat, config=config)
+                print(f"Debug: Sending request to LM Studio with config: {config}")
+            # --- Timeout logic ---
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(model.respond, chat, config=config)
+                try:
+                    result = future.result(timeout=timeout_seconds)
+                except concurrent.futures.TimeoutError:
+                    error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
+                    print(error_message)
+                    return (error_message,)
 
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
@@ -216,11 +224,11 @@ class ExpoLmstudioUnified:
         finally:
             # Clean up the temporary image file if it was created
             if temp_path and os.path.exists(temp_path):
-                 try:
+                try:
                     os.unlink(temp_path)
                     if debug:
                         print(f"Debug: Removed temporary file: {temp_path}")
-                 except Exception as cleanup_err:
+                except Exception as cleanup_err:
                     print(f"Warning: Failed to remove temporary file {temp_path}: {cleanup_err}")
 
 
@@ -241,6 +249,7 @@ class ExpoLmstudioImageToText:
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
+                "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
             }
         }
 
@@ -252,7 +261,7 @@ class ExpoLmstudioImageToText:
     def IS_CHANGED(self, **kwargs):
         return float("NaN") # Tell ComfyUI to process this node the usual way
 
-    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False):
+    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
@@ -309,9 +318,15 @@ class ExpoLmstudioImageToText:
 
             if debug:
                 print(f"Debug: Sending request to LM Studio")
-
-            # Generate response
-            result = model_obj.respond(chat, config=config)
+            # --- Timeout logic ---
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(model_obj.respond, chat, config=config)
+                try:
+                    result = future.result(timeout=timeout_seconds)
+                except concurrent.futures.TimeoutError:
+                    error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
+                    print(error_message)
+                    return (error_message,)
 
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
@@ -336,11 +351,11 @@ class ExpoLmstudioImageToText:
         finally:
             # Clean up the temporary image file if it was created
             if temp_path and os.path.exists(temp_path):
-                 try:
+                try:
                     os.unlink(temp_path)
                     if debug:
                         print(f"Debug: Removed temporary file: {temp_path}")
-                 except Exception as cleanup_err:
+                except Exception as cleanup_err:
                     print(f"Warning: Failed to remove temporary file {temp_path}: {cleanup_err}")
 
 
@@ -360,6 +375,7 @@ class ExpoLmstudioTextGeneration:
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
+                "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
             }
         }
 
@@ -371,7 +387,7 @@ class ExpoLmstudioTextGeneration:
     def IS_CHANGED(self, **kwargs):
         return float("NaN") # Tell ComfyUI to process this node the usual way
 
-    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False):
+    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
@@ -409,9 +425,15 @@ class ExpoLmstudioTextGeneration:
 
             if debug:
                 print(f"Debug: Sending request to LM Studio")
-
-            # Generate response
-            result = model_obj.respond(chat, config=config)
+            # --- Timeout logic ---
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(model_obj.respond, chat, config=config)
+                try:
+                    result = future.result(timeout=timeout_seconds)
+                except concurrent.futures.TimeoutError:
+                    error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
+                    print(error_message)
+                    return (error_message,)
 
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
