@@ -34,6 +34,22 @@ except ImportError:
     HAS_SDK = False
     print("LM Studio SDK not found. Please install it using: pip install lmstudio")
 
+def check_sdk_compatibility():
+    """Check if the LM Studio SDK version is compatible with the current LM Studio version"""
+    if not HAS_SDK:
+        return False, "LM Studio SDK is not installed. Please install it using: pip install lmstudio"
+    
+    try:
+        # Try a simple operation that would fail with version mismatch
+        lms.server.get_loaded_models()
+        return True, None
+    except Exception as e:
+        error_str = str(e)
+        if "bosToken" in error_str or "jinjaPromptTemplate" in error_str:
+            return False, ("LM Studio SDK version incompatibility detected. "
+                          "Please upgrade the SDK using: pip install lmstudio --upgrade")
+        return False, f"SDK compatibility check failed: {error_str}"
+
 # --- Helper function to get model with fallback ---
 def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False):
     """
@@ -41,6 +57,11 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
     any currently loaded model in LM Studio as a fallback.
     Returns the model object or raises an exception if no model can be obtained.
     """
+    # First check SDK compatibility
+    is_compatible, compatibility_error = check_sdk_compatibility()
+    if not is_compatible:
+        raise Exception(compatibility_error)
+    
     model_obj = None
     try:
         start_time = time.time()
@@ -250,6 +271,10 @@ class ExpoLmstudioImageToText:
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
                 "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
+                # Legacy parameters for backward compatibility
+                "model": ("STRING", {"default": ""}),  # Old parameter name
+                "ip_address": ("STRING", {"default": ""}),  # Legacy HTTP mode
+                "port": ("INT", {"default": 0, "min": 0, "max": 65535}),  # Legacy HTTP mode
             }
         }
 
@@ -261,7 +286,18 @@ class ExpoLmstudioImageToText:
     def IS_CHANGED(self, **kwargs):
         return float("NaN") # Tell ComfyUI to process this node the usual way
 
-    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
+    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+        # Handle backward compatibility
+        # If legacy parameters are provided, show a deprecation warning and try to use them
+        if model and not model_key:
+            model_key = model
+            if debug:
+                print("Debug: Using legacy 'model' parameter as 'model_key'")
+        
+        if ip_address and port > 0:
+            # Legacy HTTP mode detected
+            return self._process_image_legacy_http(image, user_prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
+        
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
@@ -358,6 +394,89 @@ class ExpoLmstudioImageToText:
                 except Exception as cleanup_err:
                     print(f"Warning: Failed to remove temporary file {temp_path}: {cleanup_err}")
 
+    def _process_image_legacy_http(self, image, user_prompt, system_prompt, model, ip_address, port, seed, max_tokens=1000, temperature=0.7, debug=False):
+        """Legacy HTTP-based image processing for backward compatibility"""
+        print("Warning: Using legacy HTTP mode. Consider upgrading to SDK mode for better performance.")
+        
+        try:
+            import requests
+        except ImportError:
+            return ("Error: requests library not found. Please install it using: pip install requests",)
+        
+        # Set seed
+        if seed == -1:
+            seed = random.randint(0, 0xffffffffffffffff)
+        random.seed(seed)
+
+        if debug:
+            print(f"Debug: Starting legacy HTTP process_image method")
+            print(f"Debug: Text input: {user_prompt}")
+            print(f"Debug: Model: {model}")
+            print(f"Debug: System prompt: {system_prompt}")
+            print(f"Debug: Image shape: {image.shape}")
+
+        try:
+            # Convert numpy array to PIL Image
+            pil_image = Image.fromarray(np.uint8(image[0]*255))
+
+            # Convert to base64
+            buffered = io.BytesIO()
+            pil_image.save(buffered, format="JPEG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+
+            # Prepare the payload
+            payload = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_str}"}}
+                        ]}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": False,
+                "seed": seed
+            }
+
+            if debug:
+                print(f"Debug: Payload prepared, attempting to connect to server")
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer lm-studio"
+            }
+
+            url = f"http://{ip_address}:{port}/v1/chat/completions"
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+
+            if debug:
+                print(f"Debug: Server response status code: {response.status_code}")
+
+            response.raise_for_status()
+
+            response_json = response.json()
+            if 'choices' in response_json and len(response_json['choices']) > 0:
+                generated_text = response_json['choices'][0]['message']['content']
+            else:
+                generated_text = "No content in the response"
+
+            if debug:
+                print(f"Debug: Generated text: {generated_text[:100]}...")
+
+            return (generated_text,)
+
+        except Exception as e:
+            error_message = f"Legacy HTTP Error: {str(e)}"
+            print(error_message)
+            return (error_message,)
+
 
 class ExpoLmstudioTextGeneration:
     @classmethod
@@ -376,6 +495,10 @@ class ExpoLmstudioTextGeneration:
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
                 "debug": ("BOOLEAN", {"default": False}),
                 "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
+                # Legacy parameters for backward compatibility
+                "model": ("STRING", {"default": ""}),  # Old parameter name
+                "ip_address": ("STRING", {"default": ""}),  # Legacy HTTP mode
+                "port": ("INT", {"default": 0, "min": 0, "max": 65535}),  # Legacy HTTP mode
             }
         }
 
@@ -387,7 +510,18 @@ class ExpoLmstudioTextGeneration:
     def IS_CHANGED(self, **kwargs):
         return float("NaN") # Tell ComfyUI to process this node the usual way
 
-    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
+    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+        # Handle backward compatibility
+        # If legacy parameters are provided, show a deprecation warning and try to use them
+        if model and not model_key:
+            model_key = model
+            if debug:
+                print("Debug: Using legacy 'model' parameter as 'model_key'")
+        
+        if ip_address and port > 0:
+            # Legacy HTTP mode detected
+            return self._generate_text_legacy_http(prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
+        
         # Check if LM Studio SDK is available
         if not HAS_SDK:
             return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
@@ -453,5 +587,71 @@ class ExpoLmstudioTextGeneration:
 
         except Exception as e:
             error_message = f"Error processing with LM Studio: {str(e)}"
+            print(error_message)
+            return (error_message,)
+
+    def _generate_text_legacy_http(self, prompt, system_prompt, model, ip_address, port, seed, max_tokens=1000, temperature=0.7, debug=False):
+        """Legacy HTTP-based text generation for backward compatibility"""
+        print("Warning: Using legacy HTTP mode. Consider upgrading to SDK mode for better performance.")
+        
+        try:
+            import requests
+        except ImportError:
+            return ("Error: requests library not found. Please install it using: pip install requests",)
+        
+        # Set seed
+        if seed == -1:
+            seed = random.randint(0, 0xffffffffffffffff)
+        random.seed(seed)
+
+        if debug:
+            print(f"Debug: Starting legacy HTTP generate_text method")
+            print(f"Debug: Prompt: {prompt}")
+            print(f"Debug: Model: {model}")
+            print(f"Debug: System prompt: {system_prompt}")
+
+        try:
+            # Prepare the payload
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": False,
+                "seed": seed
+            }
+
+            if debug:
+                print(f"Debug: Payload prepared, attempting to connect to server")
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer lm-studio"
+            }
+
+            url = f"http://{ip_address}:{port}/v1/chat/completions"
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+
+            if debug:
+                print(f"Debug: Server response status code: {response.status_code}")
+
+            response.raise_for_status()
+
+            response_json = response.json()
+            if 'choices' in response_json and len(response_json['choices']) > 0:
+                generated_text = response_json['choices'][0]['message']['content']
+            else:
+                generated_text = "No content in the response"
+
+            if debug:
+                print(f"Debug: Generated text: {generated_text[:100]}...")
+
+            return (generated_text,)
+
+        except Exception as e:
+            error_message = f"Legacy HTTP Error: {str(e)}"
             print(error_message)
             return (error_message,)

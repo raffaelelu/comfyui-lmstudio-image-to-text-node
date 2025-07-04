@@ -49,6 +49,41 @@ Here's an example of how the LM Studio nodes can be used in a ComfyUI workflow:
     # Activate your ComfyUI Python environment (if using venv, conda, etc.) first!
     pip install lmstudio
     ```
+
+## Troubleshooting
+
+### LM Studio Version Compatibility
+
+If you encounter errors like:
+- `Error processing with LM Studio: Object missing required field 'bosToken' - at '$.promptTemplate.jinjaPromptTemplate'`
+- Other SDK-related errors after upgrading LM Studio
+
+This usually means your LM Studio SDK version is incompatible with your LM Studio version. **Solution:**
+
+1. **Quick Fix:** Run the upgrade helper script:
+   ```bash
+   python upgrade_lmstudio.py
+   ```
+
+2. **Manual Fix:** Upgrade the LM Studio SDK:
+   ```bash
+   pip install lmstudio --upgrade
+   ```
+
+3. **Restart ComfyUI completely** after upgrading.
+
+### Backward Compatibility
+
+The nodes now support backward compatibility with older workflow files that used:
+- `model` parameter instead of `model_key`
+- `ip_address` and `port` parameters for HTTP connections
+
+When old parameters are detected, the nodes will:
+- Show a deprecation warning
+- Automatically use the legacy HTTP mode if `ip_address` and `port` are provided
+- Map `model` parameter to `model_key` for SDK mode
+
+**Recommendation:** Update old workflows to use the new SDK-based parameters for better performance and reliability.
     *(You might need to use a specific pip command depending on your ComfyUI setup, e.g., for portable builds)*
 4.  Restart ComfyUI.
 
