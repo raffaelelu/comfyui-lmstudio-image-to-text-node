@@ -29,6 +29,8 @@ try:
     import lmstudio as lms
     HAS_SDK = True
     print("LM Studio SDK found and loaded")
+    # Note: Updated to use modern API (lms.list_loaded_models() instead of lms.server.get_loaded_models())
+    # Compatible with LM Studio SDK version 1.4.1 and newer
 except ImportError:
     lms = None
     HAS_SDK = False
@@ -41,7 +43,13 @@ def check_sdk_compatibility():
     
     try:
         # Try a simple operation that would fail with version mismatch
-        lms.server.get_loaded_models()
+        # Try both modern and legacy API approaches
+        try:
+            lms.list_loaded_models()
+        except AttributeError:
+            # Fallback to client approach if direct method doesn't exist
+            with lms.Client() as client:
+                client.list_loaded_models()
         return True, None
     except Exception as e:
         error_str = str(e)
@@ -82,12 +90,34 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
         print("Attempting to find a loaded model as fallback...")
 
         try:
-            # Try to find any loaded models
-            loaded_models = lms.server.get_loaded_models()
+            # Try to find any loaded models using modern API
+            loaded_models = None
+            try:
+                loaded_models = lms.list_loaded_models()
+            except AttributeError:
+                # Fallback to client approach if direct method doesn't exist
+                try:
+                    with lms.Client() as client:
+                        loaded_models = client.list_loaded_models()
+                except:
+                    pass
 
             if loaded_models:
-                # Use the first loaded model as fallback
-                fallback_model_key = loaded_models[0]['model']
+                # Handle different data structures from different SDK versions
+                fallback_model_key = None
+                
+                if isinstance(loaded_models, list) and len(loaded_models) > 0:
+                    first_model = loaded_models[0]
+                    if isinstance(first_model, dict):
+                        # Legacy format: [{"model": "model_name", ...}, ...]
+                        fallback_model_key = first_model.get('model') or first_model.get('id') or first_model.get('name')
+                    elif isinstance(first_model, str):
+                        # Simple format: ["model_name", ...]
+                        fallback_model_key = first_model
+                
+                if not fallback_model_key:
+                    raise Exception("Could not extract model name from loaded models list")
+                
                 print(f"Debug: Found loaded model '{fallback_model_key}'. Attempting to use as fallback.")
 
                 # Load/get the fallback model, applying the same unload settings
