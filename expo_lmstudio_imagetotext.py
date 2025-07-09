@@ -19,6 +19,7 @@ import time
 import os
 import tempfile
 import concurrent.futures
+import hashlib
 
 # Default models to use
 DEFAULT_LLM = "gemma-3-4b-it-qat"
@@ -167,8 +168,28 @@ class ExpoLmstudioUnified:
     FUNCTION = "process_input"
     CATEGORY = "ComfyExpo/LMStudio"
 
-    def IS_CHANGED(self, **kwargs):
-        return float("NaN") # Tell ComfyUI to process this node the usual way
+    @classmethod
+    def IS_CHANGED(cls, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
+        m = hashlib.sha256()
+        
+        m.update(str(text_input).encode())
+        m.update(str(system_prompt).encode())
+        m.update(str(model_key).encode())
+        m.update(str(auto_unload).encode())
+        m.update(str(unload_delay).encode())
+        m.update(str(seed).encode())
+        m.update(str(max_tokens).encode())
+        m.update(str(temperature).encode())
+        m.update(str(debug).encode())
+        m.update(str(timeout_seconds).encode())
+        
+        # Include image hash if present
+        if image is not None:
+            # Convert image to a hashable representation
+            image_bytes = np.array(image).tobytes()
+            m.update(image_bytes)
+        
+        return m.hexdigest()
 
     def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
         # Check if LM Studio SDK is available
@@ -313,8 +334,30 @@ class ExpoLmstudioImageToText:
     FUNCTION = "process_image"
     CATEGORY = "ComfyExpo/I2T"
 
-    def IS_CHANGED(self, **kwargs):
-        return float("NaN") # Tell ComfyUI to process this node the usual way
+    @classmethod
+    def IS_CHANGED(cls, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+        m = hashlib.sha256()
+        
+        m.update(str(user_prompt).encode())
+        m.update(str(system_prompt).encode())
+        m.update(str(model_key).encode())
+        m.update(str(auto_unload).encode())
+        m.update(str(unload_delay).encode())
+        m.update(str(seed).encode())
+        m.update(str(max_tokens).encode())
+        m.update(str(temperature).encode())
+        m.update(str(debug).encode())
+        m.update(str(timeout_seconds).encode())
+        m.update(str(model).encode())
+        m.update(str(ip_address).encode())
+        m.update(str(port).encode())
+        
+        # Include image hash
+        if image is not None:
+            image_bytes = np.array(image).tobytes()
+            m.update(image_bytes)
+        
+        return m.hexdigest()
 
     def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
         # Handle backward compatibility
@@ -537,8 +580,25 @@ class ExpoLmstudioTextGeneration:
     FUNCTION = "generate_text"
     CATEGORY = "ComfyExpo/Text"
 
-    def IS_CHANGED(self, **kwargs):
-        return float("NaN") # Tell ComfyUI to process this node the usual way
+    @classmethod
+    def IS_CHANGED(cls, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+        m = hashlib.sha256()
+        
+        m.update(str(prompt).encode())
+        m.update(str(system_prompt).encode())
+        m.update(str(model_key).encode())
+        m.update(str(auto_unload).encode())
+        m.update(str(unload_delay).encode())
+        m.update(str(seed).encode())
+        m.update(str(max_tokens).encode())
+        m.update(str(temperature).encode())
+        m.update(str(debug).encode())
+        m.update(str(timeout_seconds).encode())
+        m.update(str(model).encode())
+        m.update(str(ip_address).encode())
+        m.update(str(port).encode())
+        
+        return m.hexdigest()
 
     def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
         # Handle backward compatibility
