@@ -142,6 +142,50 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
             raise Exception(f"Error: Failed to load primary model '{model_key}' and fallback attempt failed. Details: {fallback_e}")
 
 
+def safe_get_stats_info(result, debug=False):
+    """
+    Safely extract statistics information from the result object.
+    Handles different SDK versions and attribute names.
+    """
+    stats_info = {}
+    
+    if hasattr(result, 'stats') and result.stats:
+        # Get predicted tokens count
+        if hasattr(result.stats, 'predicted_tokens_count'):
+            stats_info['predicted_tokens'] = result.stats.predicted_tokens_count
+        elif hasattr(result.stats, 'tokens_count'):
+            stats_info['predicted_tokens'] = result.stats.tokens_count
+        else:
+            stats_info['predicted_tokens'] = "N/A"
+        
+        # Get time to first token
+        if hasattr(result.stats, 'time_to_first_token_sec'):
+            stats_info['time_to_first_token'] = result.stats.time_to_first_token_sec
+        elif hasattr(result.stats, 'generation_time_sec'):
+            stats_info['time_to_first_token'] = result.stats.generation_time_sec
+        elif hasattr(result.stats, 'time_to_first_token'):
+            stats_info['time_to_first_token'] = result.stats.time_to_first_token
+        else:
+            stats_info['time_to_first_token'] = "N/A"
+        
+        # Get stop reason
+        if hasattr(result.stats, 'stop_reason'):
+            stats_info['stop_reason'] = result.stats.stop_reason
+        else:
+            stats_info['stop_reason'] = "N/A"
+    else:
+        stats_info = {
+            'predicted_tokens': "N/A",
+            'time_to_first_token': "N/A",
+            'stop_reason': "N/A"
+        }
+    
+    if debug:
+        print(f"Debug: Stats extraction - Tokens: {stats_info['predicted_tokens']}, Time: {stats_info['time_to_first_token']}, Stop reason: {stats_info['stop_reason']}")
+    
+    return stats_info
+
+
 class ExpoLmstudioUnified:
     @classmethod
     def INPUT_TYPES(cls):
@@ -275,8 +319,11 @@ class ExpoLmstudioUnified:
 
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
-                print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
-                print(f"Debug: Time to first token: {result.stats.time_to_first_token_sec}s")
+            
+            # Extract and log stats information
+            stats_info = safe_get_stats_info(result, debug)
+            if debug:
+                print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
 
             # Unload model immediately if requested (TTL handles delayed unloading)
             if auto_unload == "True" and unload_delay == 0:
@@ -439,8 +486,11 @@ class ExpoLmstudioImageToText:
 
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
-                print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
-                print(f"Debug: Time to first token: {result.stats.time_to_first_token_sec}s")
+            
+            # Extract and log stats information
+            stats_info = safe_get_stats_info(result, debug)
+            if debug:
+                print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
 
             # Unload model immediately if requested (TTL handles delayed unloading)
             if auto_unload == "True" and unload_delay == 0:
@@ -661,8 +711,11 @@ class ExpoLmstudioTextGeneration:
 
             if debug:
                 print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
-                print(f"Debug: Tokens generated: {result.stats.predicted_tokens_count}")
-                print(f"Debug: Time to first token: {result.stats.time_to_first_token_sec}s")
+            
+            # Extract and log stats information
+            stats_info = safe_get_stats_info(result, debug)
+            if debug:
+                print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
 
             # Unload model immediately if requested (TTL handles delayed unloading)
             if auto_unload == "True" and unload_delay == 0:
@@ -745,3 +798,16 @@ class ExpoLmstudioTextGeneration:
             error_message = f"Legacy HTTP Error: {str(e)}"
             print(error_message)
             return (error_message,)
+
+
+NODE_CLASS_MAPPINGS = {
+    "ExpoLmstudioUnified": ExpoLmstudioUnified,
+    "ExpoLmstudioImageToText": ExpoLmstudioImageToText,
+    "ExpoLmstudioTextGeneration": ExpoLmstudioTextGeneration,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "ExpoLmstudioUnified": "Expo LM Studio Unified",
+    "ExpoLmstudioImageToText": "Expo LM Studio Image to Text",
+    "ExpoLmstudioTextGeneration": "Expo LM Studio Text Generation",
+}
