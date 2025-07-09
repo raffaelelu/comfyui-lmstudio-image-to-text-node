@@ -62,18 +62,33 @@ def check_sdk_compatibility():
 # --- Helper function to get model with fallback ---
 def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False):
     """
-    Attempts to get the specified model. If it fails, tries to find and use
-    any currently loaded model in LM Studio as a fallback.
+    Attempts to get the specified model. If model_key is blank, uses the currently loaded model.
+    If it fails, tries to find and use any currently loaded model in LM Studio as a fallback.
     Returns the model object or raises an exception if no model can be obtained.
     """
     # First check SDK compatibility
     is_compatible, compatibility_error = check_sdk_compatibility()
     if not is_compatible:
         raise Exception(compatibility_error)
-    
+
     model_obj = None
     try:
         start_time = time.time()
+        # If model_key is blank/empty/whitespace, use currently loaded model
+        if not model_key or str(model_key).strip() == "":
+            if debug:
+                print("Debug: No model_key provided, attempting to use currently loaded model via lms.llm()")
+            if auto_unload == "True" and unload_delay > 0:
+                # TTL only applies if loading a new instance, not to existing loaded model
+                model_obj = lms.llm()
+                if debug:
+                    print(f"Debug: Loaded currently loaded model (TTL not set for existing instance)")
+            else:
+                model_obj = lms.llm()
+                if debug:
+                    print(f"Debug: Loaded currently loaded model")
+            return model_obj
+
         if auto_unload == "True" and unload_delay > 0:
             # Use TTL for delayed unloading
             model_obj = lms.llm(model_key, ttl=unload_delay)
@@ -85,7 +100,6 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
             if debug:
                 print(f"Debug: Primary model '{model_key}' loaded in {time.time() - start_time:.2f}s")
         return model_obj
-
     except Exception as e:
         print(f"Warning: Failed to load or get primary model '{model_key}': {e}")
         print("Attempting to find a loaded model as fallback...")
