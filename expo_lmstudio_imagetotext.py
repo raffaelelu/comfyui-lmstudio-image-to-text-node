@@ -298,19 +298,20 @@ class ExpoLmstudioUnified:
                 # Use the file path method to prepare the image
                 image_handle = lms.prepare_image(temp_path)
 
-                # Add user message with image and optional text
-                user_message_content = [image_handle]
+                # Add user message with correct signature per SDK docs
                 if has_text:
-                     user_message_content.insert(0, text_input) # Add text before image handle
-
-                chat.add_user_message(*user_message_content)
-
-                if debug:
-                    print(f"Debug: Added image(s) and text (if any) to chat message")
-
+                    chat.add_user_message(text_input, images=[image_handle])
+                    if debug:
+                        print(f"Debug: Added text and image to chat message")
+                else:
+                    chat.add_user_message(images=[image_handle])
+                    if debug:
+                        print(f"Debug: Added image only to chat message")
             elif has_text:
                 # Add user message with text only
                 chat.add_user_message(text_input)
+                if debug:
+                    print(f"Debug: Added text only to chat message")
 
             # Configure generation parameters
             config = {
