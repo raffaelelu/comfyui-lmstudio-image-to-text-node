@@ -1,1 +1,2 @@
-lmstudio>=1.4.1
+lmstudio>=1.4.1, <2.0.0
+requests
