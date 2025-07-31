@@ -26,38 +26,9 @@ DEFAULT_LLM = "gemma-3-4b-it-qat"
 DEFAULT_VISION = "qwen2-vl-2b-instruct"
 
 # Try to import LM Studio SDK
-try:
-    import lmstudio as lms
-    HAS_SDK = True
-    print("LM Studio SDK found and loaded")
-    # Note: Updated to use modern API (lms.list_loaded_models() instead of lms.server.get_loaded_models())
-    # Compatible with LM Studio SDK version 1.4.1 and newer
-except ImportError:
-    lms = None
-    HAS_SDK = False
-    print("LM Studio SDK not found. Please install it using: pip install lmstudio")
+import lmstudio as lms
 
-def check_sdk_compatibility():
-    """Check if the LM Studio SDK version is compatible with the current LM Studio version"""
-    if not HAS_SDK:
-        return False, "LM Studio SDK is not installed. Please install it using: pip install lmstudio"
-    
-    try:
-        # Try a simple operation that would fail with version mismatch
-        # Try both modern and legacy API approaches
-        try:
-            lms.list_loaded_models()
-        except AttributeError:
-            # Fallback to client approach if direct method doesn't exist
-            with lms.Client() as client:
-                client.list_loaded_models()
-        return True, None
-    except Exception as e:
-        error_str = str(e)
-        if "bosToken" in error_str or "jinjaPromptTemplate" in error_str:
-            return False, ("LM Studio SDK version incompatibility detected. "
-                          "Please upgrade the SDK using: pip install lmstudio --upgrade")
-        return False, f"SDK compatibility check failed: {error_str}"
+# No longer checking SDK compatibility
 
 # --- Helper function to get model with fallback ---
 def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False):
@@ -66,10 +37,7 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
     If it fails, tries to find and use any currently loaded model in LM Studio as a fallback.
     Returns the model object or raises an exception if no model can be obtained.
     """
-    # First check SDK compatibility
-    is_compatible, compatibility_error = check_sdk_compatibility()
-    if not is_compatible:
-        raise Exception(compatibility_error)
+    # No SDK compatibility check
 
     model_obj = None
     try:
@@ -250,9 +218,7 @@ class ExpoLmstudioUnified:
         return m.hexdigest()
 
     def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
-        # Check if LM Studio SDK is available
-        if not HAS_SDK:
-            return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
+        # No SDK availability check
 
         # Check if we have valid inputs
         has_image = image is not None
@@ -433,9 +399,7 @@ class ExpoLmstudioImageToText:
             # Legacy HTTP mode detected
             return self._process_image_legacy_http(image, user_prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
         
-        # Check if LM Studio SDK is available
-        if not HAS_SDK:
-            return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
+        # No SDK availability check
 
         # Set seed
         if seed == -1:
@@ -677,9 +641,7 @@ class ExpoLmstudioTextGeneration:
             # Legacy HTTP mode detected
             return self._generate_text_legacy_http(prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
         
-        # Check if LM Studio SDK is available
-        if not HAS_SDK:
-            return ("Error: LM Studio SDK is not installed. Please install it using: pip install lmstudio",)
+        # No SDK availability check
 
         # Set seed
         if seed == -1:
