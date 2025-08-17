@@ -45,28 +45,24 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
         # If model_key is blank/empty/whitespace, use currently loaded model
         if not model_key or str(model_key).strip() == "":
             if debug:
-                print("Debug: No model_key provided, attempting to use currently loaded model via lms.llm()")
-            if auto_unload == "True" and unload_delay > 0:
-                # TTL only applies if loading a new instance, not to existing loaded model
-                model_obj = lms.llm()
+                print("Debug: No model_key provided, attempting to use currently loaded model via lms.Client()")
+            with lms.Client() as client:
+                model_obj = client.llm()
                 if debug:
-                    print(f"Debug: Loaded currently loaded model (TTL not set for existing instance)")
-            else:
-                model_obj = lms.llm()
-                if debug:
-                    print(f"Debug: Loaded currently loaded model")
+                    print(f"Debug: Loaded currently loaded model (new websocket)")
             return model_obj
 
-        if auto_unload == "True" and unload_delay > 0:
-            # Use TTL for delayed unloading
-            model_obj = lms.llm(model_key, ttl=unload_delay)
-            if debug:
-                print(f"Debug: Primary model '{model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
-        else:
-            # Normal loading
-            model_obj = lms.llm(model_key)
-            if debug:
-                print(f"Debug: Primary model '{model_key}' loaded in {time.time() - start_time:.2f}s")
+        with lms.Client() as client:
+            if auto_unload == "True" and unload_delay > 0:
+                # Use TTL for delayed unloading
+                model_obj = client.llm(model_key, ttl=unload_delay)
+                if debug:
+                    print(f"Debug: Primary model '{model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
+            else:
+                # Normal loading
+                model_obj = client.llm(model_key)
+                if debug:
+                    print(f"Debug: Primary model '{model_key}' loaded in {time.time() - start_time:.2f}s")
         return model_obj
     except Exception as e:
         print(f"Warning: Failed to load or get primary model '{model_key}': {e}")
@@ -88,7 +84,7 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
             if loaded_models:
                 # Handle different data structures from different SDK versions
                 fallback_model_key = None
-                
+
                 if isinstance(loaded_models, list) and len(loaded_models) > 0:
                     first_model = loaded_models[0]
                     if isinstance(first_model, dict):
@@ -97,22 +93,23 @@ def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False
                     elif isinstance(first_model, str):
                         # Simple format: ["model_name", ...]
                         fallback_model_key = first_model
-                
+
                 if not fallback_model_key:
                     raise Exception("Could not extract model name from loaded models list")
-                
+
                 print(f"Debug: Found loaded model '{fallback_model_key}'. Attempting to use as fallback.")
 
                 # Load/get the fallback model, applying the same unload settings
                 start_time = time.time()
-                if auto_unload == "True" and unload_delay > 0:
-                     model_obj = lms.llm(fallback_model_key, ttl=unload_delay)
-                     if debug:
-                         print(f"Debug: Fallback model '{fallback_model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
-                else:
-                     model_obj = lms.llm(fallback_model_key)
-                     if debug:
-                         print(f"Debug: Fallback model '{fallback_model_key}' loaded in {time.time() - start_time:.2f}s")
+                with lms.Client() as client:
+                    if auto_unload == "True" and unload_delay > 0:
+                        model_obj = client.llm(fallback_model_key, ttl=unload_delay)
+                        if debug:
+                            print(f"Debug: Fallback model '{fallback_model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
+                    else:
+                        model_obj = client.llm(fallback_model_key)
+                        if debug:
+                            print(f"Debug: Fallback model '{fallback_model_key}' loaded in {time.time() - start_time:.2f}s")
 
                 print(f"Info: Successfully obtained fallback model '{fallback_model_key}'.")
                 return model_obj
