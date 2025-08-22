@@ -13,112 +13,112 @@ Includes a fallback mechanism to use any loaded model if the specified model fai
 import base64
 import numpy as np
 from PIL import Image
-import io
-import random
 import time
 import os
+import io
 import tempfile
-import concurrent.futures
 import hashlib
+import random
+import concurrent.futures
+
+try:
+    import lmstudio as lms
+except Exception:
+    # keep name available for runtime checks; nodes will handle missing SDK at call time
+    lms = None
 
 # Default models to use
 DEFAULT_LLM = "gemma-3-4b-it-qat"
 DEFAULT_VISION = "qwen2-vl-2b-instruct"
 
 # Try to import LM Studio SDK
-import lmstudio as lms
+# lmstudio imported above in a try/except; keep lms as None when unavailable
 
 # No longer checking SDK compatibility
 
-# --- Helper function to get model with fallback ---
-def get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug=False):
+# --- Helper function to get model info with fallback ---
+def get_model_info_with_fallback(model_key, debug=False):
     """
-    Attempts to get the specified model. If model_key is blank, uses the currently loaded model.
-    If it fails, tries to find and use any currently loaded model in LM Studio as a fallback.
-    Returns the model object or raises an exception if no model can be obtained.
+    Attempts to get the model information for use with the LM Studio Python SDK.
+    Returns the model key to use or raises an Exception when no model can be obtained.
     """
-    # No SDK compatibility check
+    if lms is None:
+        raise Exception("LM Studio SDK (lmstudio) not available")
 
-    model_obj = None
+    # If model_key is provided and not empty, use it directly
+    if model_key and str(model_key).strip() != "":
+        if debug:
+            print(f"Debug: Using provided model key: '{model_key}'")
+        return model_key
+
+    # Try to find a fallback model
     try:
-        start_time = time.time()
-        # If model_key is blank/empty/whitespace, use currently loaded model
-        if not model_key or str(model_key).strip() == "":
-            if debug:
-                print("Debug: No model_key provided, attempting to use currently loaded model via lms.Client()")
-            with lms.Client() as client:
-                model_obj = client.llm()
-                if debug:
-                    print(f"Debug: Loaded currently loaded model (new websocket)")
-            return model_obj
-
-        with lms.Client() as client:
-            if auto_unload == "True" and unload_delay > 0:
-                # Use TTL for delayed unloading
-                model_obj = client.llm(model_key, ttl=unload_delay)
-                if debug:
-                    print(f"Debug: Primary model '{model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
-            else:
-                # Normal loading
-                model_obj = client.llm(model_key)
-                if debug:
-                    print(f"Debug: Primary model '{model_key}' loaded in {time.time() - start_time:.2f}s")
-        return model_obj
-    except Exception as e:
-        print(f"Warning: Failed to load or get primary model '{model_key}': {e}")
-        print("Attempting to find a loaded model as fallback...")
-
+        # Try to get loaded models
         try:
-            # Try to find any loaded models using modern API
+            with lms.Client() as client:
+                if hasattr(client, "list_loaded_models"):
+                    loaded_models = client.list_loaded_models()
+                elif hasattr(client.llm, "list_loaded"):
+                    loaded_models = client.llm.list_loaded()
+                elif hasattr(client.llm, "list_loaded_models"):
+                    loaded_models = client.llm.list_loaded_models()
+        except Exception as e:
+            if debug:
+                print(f"Debug: Failed to get loaded models: {e}")
             loaded_models = None
+
+        if not loaded_models:
+            if debug:
+                print("Debug: No loaded models found, will use default model")
+            return None  # Let the client use default
+
+        # If debugging, show the raw loaded_models structure
+        if debug:
             try:
-                loaded_models = lms.list_loaded_models()
-            except AttributeError:
-                # Fallback to client approach if direct method doesn't exist
-                try:
-                    with lms.Client() as client:
-                        loaded_models = client.list_loaded_models()
-                except:
-                    pass
+                import pprint
+                print("Debug: Raw loaded_models:")
+                pprint.pprint(loaded_models)
+            except Exception:
+                print(f"Debug: loaded_models (repr): {repr(loaded_models)}")
 
-            if loaded_models:
-                # Handle different data structures from different SDK versions
-                fallback_model_key = None
+        # Try to extract a usable model key from various shapes
+        def _extract_model_name(obj):
+            # strings
+            if isinstance(obj, str):
+                return obj
+            # list/tuple -> inspect first element
+            if isinstance(obj, (list, tuple)) and len(obj) > 0:
+                return _extract_model_name(obj[0])
+            # dict -> try common keys
+            if isinstance(obj, dict):
+                for k in ("model", "id", "name"):
+                    if k in obj and isinstance(obj[k], str) and obj[k]:
+                        return obj[k]
+                keys = list(obj.keys())
+                if keys and isinstance(keys[0], str):
+                    return keys[0]
+            # object with attributes
+            for attr in ("model", "id", "name", "display_name", "identifier", "model_key"):
+                if hasattr(obj, attr):
+                    val = getattr(obj, attr)
+                    if isinstance(val, str) and val:
+                        return val
+            return None
 
-                if isinstance(loaded_models, list) and len(loaded_models) > 0:
-                    first_model = loaded_models[0]
-                    if isinstance(first_model, dict):
-                        # Legacy format: [{"model": "model_name", ...}, ...]
-                        fallback_model_key = first_model.get('model') or first_model.get('id') or first_model.get('name')
-                    elif isinstance(first_model, str):
-                        # Simple format: ["model_name", ...]
-                        fallback_model_key = first_model
+        fallback_model_key = _extract_model_name(loaded_models)
+        if fallback_model_key:
+            if debug:
+                print(f"Debug: Found loaded model '{fallback_model_key}' as fallback.")
+            return fallback_model_key
+        else:
+            if debug:
+                print("Debug: Could not extract model name, using default")
+            return None  # Let the client use default
 
-                if not fallback_model_key:
-                    raise Exception("Could not extract model name from loaded models list")
-
-                print(f"Debug: Found loaded model '{fallback_model_key}'. Attempting to use as fallback.")
-
-                # Load/get the fallback model, applying the same unload settings
-                start_time = time.time()
-                with lms.Client() as client:
-                    if auto_unload == "True" and unload_delay > 0:
-                        model_obj = client.llm(fallback_model_key, ttl=unload_delay)
-                        if debug:
-                            print(f"Debug: Fallback model '{fallback_model_key}' loaded with TTL={unload_delay}s in {time.time() - start_time:.2f}s")
-                    else:
-                        model_obj = client.llm(fallback_model_key)
-                        if debug:
-                            print(f"Debug: Fallback model '{fallback_model_key}' loaded in {time.time() - start_time:.2f}s")
-
-                print(f"Info: Successfully obtained fallback model '{fallback_model_key}'.")
-                return model_obj
-            else:
-                raise Exception(f"Failed to load primary model '{model_key}' and no other models are currently loaded in LM Studio.")
-
-        except Exception as fallback_e:
-            # If fallback also fails or no models are loaded
-            raise Exception(f"Error: Failed to load primary model '{model_key}' and fallback attempt failed. Details: {fallback_e}")
+    except Exception as e:
+        if debug:
+            print(f"Debug: Exception in fallback detection: {e}")
+        return None  # Let the client use default
 
 
 def safe_get_stats_info(result, debug=False):
@@ -240,79 +240,91 @@ class ExpoLmstudioUnified:
         temp_path = None # Initialize temp_path for cleanup
 
         try:
-            # --- Use helper function to get model with fallback ---
-            model = get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug)
-            chat = lms.Chat(system_prompt)
-
-            # Process inputs
-            if has_image:
-                # Convert numpy array to PIL Image
-                pil_image = Image.fromarray(np.uint8(image[0]*255))
-
-                # Create a temporary file
-                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                    temp_path = temp_file.name
-                    # Save to the temporary file
-                    pil_image.save(temp_path, format="JPEG")
-
-                if debug:
-                    print(f"Debug: Saved image to temporary file: {temp_path}")
-
-                # Use the file path method to prepare the image
-                image_handle = lms.prepare_image(temp_path)
-
-                # Add user message with correct signature per SDK docs
-                if has_text:
-                    chat.add_user_message(text_input, images=[image_handle])
-                    if debug:
-                        print(f"Debug: Added text and image to chat message")
-                else:
-                    chat.add_user_message(images=[image_handle])
-                    if debug:
-                        print(f"Debug: Added image only to chat message")
-            elif has_text:
-                # Add user message with text only
-                chat.add_user_message(text_input)
-                if debug:
-                    print(f"Debug: Added text only to chat message")
-
-            # Configure generation parameters
-            config = {
-                "temperature": temperature,
-                "maxTokens": max_tokens,
-                "seed": seed
-            }
-
-            if debug:
-                print(f"Debug: Sending request to LM Studio with config: {config}")
-            # --- Timeout logic ---
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(model.respond, chat, config=config)
-                try:
-                    result = future.result(timeout=timeout_seconds)
-                except concurrent.futures.TimeoutError:
-                    error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
-                    print(error_message)
-                    return (error_message,)
-
-            if debug:
-                print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
+            # --- Get model info and create client context ---
+            model_key_to_use = get_model_info_with_fallback(model_key, debug)
             
-            # Extract and log stats information
-            stats_info = safe_get_stats_info(result, debug)
-            if debug:
-                print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
+            with lms.Client() as client:
+                # Get model with proper context management
+                if model_key_to_use:
+                    if auto_unload == "True" and unload_delay > 0:
+                        model = client.llm.model(model_key_to_use, ttl=unload_delay)
+                    else:
+                        model = client.llm.model(model_key_to_use)
+                else:
+                    # Use default model
+                    model = client.llm.model()
+                
+                chat = lms.Chat(system_prompt)
 
-            # Unload model immediately if requested (TTL handles delayed unloading)
-            if auto_unload == "True" and unload_delay == 0:
-                try:
+                # Process inputs
+                if has_image:
+                    # Convert numpy array to PIL Image
+                    pil_image = Image.fromarray(np.uint8(image[0]*255))
+
+                    # Create a temporary file
+                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
+                        temp_path = temp_file.name
+                        # Save to the temporary file
+                        pil_image.save(temp_path, format="JPEG")
+
                     if debug:
-                        print(f"Debug: Unloading model immediately.")
-                    model.unload()
-                except Exception as unload_err:
-                    print(f"Warning: Failed to unload model: {unload_err}")
+                        print(f"Debug: Saved image to temporary file: {temp_path}")
 
-            return (result.content,)
+                    # Use the client's files namespace to prepare the image
+                    image_handle = client.files.prepare_image(temp_path)
+
+                    # Add user message with correct signature per SDK docs
+                    if has_text:
+                        chat.add_user_message(text_input, images=[image_handle])
+                        if debug:
+                            print(f"Debug: Added text and image to chat message")
+                    else:
+                        chat.add_user_message(images=[image_handle])
+                        if debug:
+                            print(f"Debug: Added image only to chat message")
+                elif has_text:
+                    # Add user message with text only
+                    chat.add_user_message(text_input)
+                    if debug:
+                        print(f"Debug: Added text only to chat message")
+
+                # Configure generation parameters
+                config = {
+                    "temperature": temperature,
+                    "maxTokens": max_tokens,
+                    "seed": seed
+                }
+
+                if debug:
+                    print(f"Debug: Sending request to LM Studio with config: {config}")
+                # --- Timeout logic ---
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(model.respond, chat, config=config)
+                    try:
+                        result = future.result(timeout=timeout_seconds)
+                    except concurrent.futures.TimeoutError:
+                        error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
+                        print(error_message)
+                        return (error_message,)
+
+                if debug:
+                    print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
+                
+                # Extract and log stats information
+                stats_info = safe_get_stats_info(result, debug)
+                if debug:
+                    print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
+
+                # Unload model immediately if requested (TTL handles delayed unloading)
+                if auto_unload == "True" and unload_delay == 0:
+                    try:
+                        if debug:
+                            print(f"Debug: Unloading model immediately.")
+                        model.unload()
+                    except Exception as unload_err:
+                        print(f"Warning: Failed to unload model: {unload_err}")
+
+                return (result.content,)
 
         except Exception as e:
             error_message = f"Error processing with LM Studio: {str(e)}"
@@ -411,80 +423,87 @@ class ExpoLmstudioImageToText:
             print(f"Debug: Auto unload: {auto_unload}, Unload delay: {unload_delay}s")
             print(f"Debug: Image shape: {image.shape}")
 
-        temp_path = None # Initialize temp_path for cleanup
+        temp_path = None
 
         try:
-            # --- Use helper function to get model with fallback ---
-            model_obj = get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug)
-
-            # Convert numpy array to PIL Image
-            pil_image = Image.fromarray(np.uint8(image[0]*255))
-
-            # Create a temporary file
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                temp_path = temp_file.name
-                # Save to the temporary file
-                pil_image.save(temp_path, format="JPEG")
-
-            if debug:
-                print(f"Debug: Saved image to temporary file: {temp_path}")
-
-            # Use the file path method to prepare the image
-            image_handle = lms.prepare_image(temp_path)
-
-            # Create a new chat
-            chat = lms.Chat(system_prompt)
-
-            # Add user message with image and prompt
-            chat.add_user_message(user_prompt, images=[image_handle])
-
-            if debug:
-                print(f"Debug: Added image and prompt to chat message")
-
-            # Configure generation parameters
-            config = {
-                "temperature": temperature,
-                "maxTokens": max_tokens,
-                "seed": seed
-            }
-
-            if debug:
-                print(f"Debug: Sending request to LM Studio")
-            # --- Timeout logic ---
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(model_obj.respond, chat, config=config)
-                try:
-                    result = future.result(timeout=timeout_seconds)
-                except concurrent.futures.TimeoutError:
-                    error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
-                    print(error_message)
-                    return (error_message,)
-
-            if debug:
-                print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
+            # Get model info with fallback
+            model_key_to_use = get_model_info_with_fallback(model_key, debug)
             
-            # Extract and log stats information
-            stats_info = safe_get_stats_info(result, debug)
-            if debug:
-                print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
+            with lms.Client() as client:
+                # Get model with proper context management
+                if model_key_to_use:
+                    if auto_unload == "True" and unload_delay > 0:
+                        model_obj = client.llm.model(model_key_to_use, ttl=unload_delay)
+                    else:
+                        model_obj = client.llm.model(model_key_to_use)
+                else:
+                    # Use default model
+                    model_obj = client.llm.model()
 
-            # Unload model immediately if requested (TTL handles delayed unloading)
-            if auto_unload == "True" and unload_delay == 0:
-                try:
+                # Create chat and attach prompts
+                chat = lms.Chat(system_prompt)
+
+                # Prepare image and add to chat
+                if image is not None:
+                    pil_image = Image.fromarray(np.uint8(image[0] * 255))
+                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                        temp_path = tmp.name
+                        pil_image.save(temp_path, format='JPEG')
                     if debug:
-                        print(f"Debug: Unloading model immediately.")
-                    model_obj.unload()
-                except Exception as unload_err:
-                    print(f"Warning: Failed to unload model: {unload_err}")
+                        print(f"Debug: Saved image to temporary file: {temp_path}")
 
-            return (result.content,)
+                    # Use client.files.prepare_image
+                    image_handle = client.files.prepare_image(temp_path)
+                    chat.add_user_message(user_prompt, images=[image_handle])
+                else:
+                    chat.add_user_message(user_prompt)
+
+                # Configure generation parameters
+                config = {
+                    "temperature": temperature,
+                    "maxTokens": max_tokens,
+                    "seed": seed
+                }
+
+                if debug:
+                    print(f"Debug: Sending request to LM Studio with config: {config}")
+
+                # Run with timeout
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(model_obj.respond, chat, config=config)
+                    try:
+                        result = future.result(timeout=timeout_seconds)
+                    except concurrent.futures.TimeoutError:
+                        error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
+                        print(error_message)
+                        return (error_message,)
+
+                if debug:
+                    try:
+                        print(f"Debug: Response received: {result.content[:100]}...")
+                    except Exception:
+                        print("Debug: Response received (unable to slice content)")
+
+                stats_info = safe_get_stats_info(result, debug)
+                if debug:
+                    print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
+
+                # Unload model if requested
+                if auto_unload == "True" and unload_delay == 0:
+                    try:
+                        if debug:
+                            print("Debug: Unloading model immediately.")
+                        model_obj.unload()
+                    except Exception as unload_err:
+                        print(f"Warning: Failed to unload model: {unload_err}")
+
+                return (result.content,)
 
         except Exception as e:
             error_message = f"Error processing with LM Studio: {str(e)}"
             print(error_message)
             return (error_message,)
         finally:
-            # Clean up the temporary image file if it was created
             if temp_path and os.path.exists(temp_path):
                 try:
                     os.unlink(temp_path)
@@ -655,52 +674,63 @@ class ExpoLmstudioTextGeneration:
             print(f"Debug: Temperature: {temperature}")
 
         try:
-            # --- Use helper function to get model with fallback ---
-            model_obj = get_lm_model_with_fallback(model_key, auto_unload, unload_delay, debug)
-
-            # Create a new chat
-            chat = lms.Chat(system_prompt)
-
-            # Add user message
-            chat.add_user_message(prompt)
-
-            # Configure generation parameters
-            config = {
-                "temperature": temperature,
-                "maxTokens": max_tokens,
-                "seed": seed
-            }
-
-            if debug:
-                print(f"Debug: Sending request to LM Studio")
-            # --- Timeout logic ---
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(model_obj.respond, chat, config=config)
-                try:
-                    result = future.result(timeout=timeout_seconds)
-                except concurrent.futures.TimeoutError:
-                    error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
-                    print(error_message)
-                    return (error_message,)
-
-            if debug:
-                print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
+            # Get model info with fallback
+            model_key_to_use = get_model_info_with_fallback(model_key, debug)
             
-            # Extract and log stats information
-            stats_info = safe_get_stats_info(result, debug)
-            if debug:
-                print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
+            with lms.Client() as client:
+                # Get model with proper context management
+                if model_key_to_use:
+                    if auto_unload == "True" and unload_delay > 0:
+                        model_obj = client.llm.model(model_key_to_use, ttl=unload_delay)
+                    else:
+                        model_obj = client.llm.model(model_key_to_use)
+                else:
+                    # Use default model
+                    model_obj = client.llm.model()
 
-            # Unload model immediately if requested (TTL handles delayed unloading)
-            if auto_unload == "True" and unload_delay == 0:
-                try:
-                    if debug:
-                        print(f"Debug: Unloading model immediately.")
-                    model_obj.unload()
-                except Exception as unload_err:
-                    print(f"Warning: Failed to unload model: {unload_err}")
+                # Create a new chat
+                chat = lms.Chat(system_prompt)
 
-            return (result.content,)
+                # Add user message
+                chat.add_user_message(prompt)
+
+                # Configure generation parameters
+                config = {
+                    "temperature": temperature,
+                    "maxTokens": max_tokens,
+                    "seed": seed
+                }
+
+                if debug:
+                    print(f"Debug: Sending request to LM Studio")
+                # --- Timeout logic ---
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(model_obj.respond, chat, config=config)
+                    try:
+                        result = future.result(timeout=timeout_seconds)
+                    except concurrent.futures.TimeoutError:
+                        error_message = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
+                        print(error_message)
+                        return (error_message,)
+
+                if debug:
+                    print(f"Debug: Response received: {result.content[:100]}...")  # Print first 100 characters
+                
+                # Extract and log stats information
+                stats_info = safe_get_stats_info(result, debug)
+                if debug:
+                    print(f"Debug: Tokens generated: {stats_info['predicted_tokens']}, Time to first token: {stats_info['time_to_first_token']}s")
+
+                # Unload model immediately if requested (TTL handles delayed unloading)
+                if auto_unload == "True" and unload_delay == 0:
+                    try:
+                        if debug:
+                            print(f"Debug: Unloading model immediately.")
+                        model_obj.unload()
+                    except Exception as unload_err:
+                        print(f"Warning: Failed to unload model: {unload_err}")
+
+                return (result.content,)
 
         except Exception as e:
             error_message = f"Error processing with LM Studio: {str(e)}"
