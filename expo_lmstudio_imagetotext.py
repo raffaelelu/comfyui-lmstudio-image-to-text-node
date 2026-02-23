@@ -29,7 +29,7 @@ except Exception:
 
 # Default models to use
 DEFAULT_LLM = "gemma-3-4b-it-qat"
-DEFAULT_VISION = "qwen2-vl-2b-instruct"
+DEFAULT_VISION = "qwen/qwen3-vl-8b"
 
 # Try to import LM Studio SDK
 # lmstudio imported above in a try/except; keep lms as None when unavailable

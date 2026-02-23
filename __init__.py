@@ -8,19 +8,22 @@ from .expo_lmstudio_imagetotext import (
     ExpoLmstudioImageToText,
     ExpoLmstudioTextGeneration
 )
+from .random_list_picker import RandomListPicker
 
 # Define how ComfyUI maps the node name (used in backend) to the class
 NODE_CLASS_MAPPINGS = {
     "Expo Lmstudio Unified": ExpoLmstudioUnified,
     "Expo Lmstudio Image To Text": ExpoLmstudioImageToText,
-    "Expo Lmstudio Text Generation": ExpoLmstudioTextGeneration
+    "Expo Lmstudio Text Generation": ExpoLmstudioTextGeneration,
+    "Random List Picker": RandomListPicker
 }
 
 # Define how ComfyUI maps the node name to its display name (shown in the UI)
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Expo Lmstudio Unified": "LM Studio (Unified)",
     "Expo Lmstudio Image To Text": "LM Studio (Image to Text)",
-    "Expo Lmstudio Text Generation": "LM Studio (Text Gen)"
+    "Expo Lmstudio Text Generation": "LM Studio (Text Gen)",
+    "Random List Picker": "Random List Picker"
 }
 
 # Standard dictionary telling ComfyUI what this package provides
