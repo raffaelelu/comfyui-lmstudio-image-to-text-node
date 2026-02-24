@@ -121,6 +121,28 @@ def get_model_info_with_fallback(model_key, debug=False):
         return None  # Let the client use default
 
 
+def check_lmstudio_connection():
+    """
+    Verify that LM Studio is reachable before attempting generation.
+    Raises a clear exception if the server is not running so ComfyUI halts
+    the pipeline rather than passing an error string to downstream nodes.
+    """
+    if lms is None:
+        raise Exception(
+            "LM Studio SDK (lmstudio) is not installed. "
+            "Run: pip install lmstudio"
+        )
+    try:
+        with lms.Client() as client:  # noqa: F841  – connection test only
+            pass
+    except Exception as e:
+        raise Exception(
+            f"Cannot connect to LM Studio. "
+            f"Please make sure LM Studio is open and the local server is enabled. "
+            f"(Error: {e})"
+        ) from e
+
+
 def safe_get_stats_info(result, debug=False):
     """
     Safely extract statistics information from the result object.
@@ -215,7 +237,8 @@ class ExpoLmstudioUnified:
         return m.hexdigest()
 
     def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
-        # No SDK availability check
+        # Fail fast if LM Studio is not reachable
+        check_lmstudio_connection()
 
         # Check if we have valid inputs
         has_image = image is not None
@@ -327,9 +350,9 @@ class ExpoLmstudioUnified:
                 return (result.content,)
 
         except Exception as e:
-            error_message = f"Error processing with LM Studio: {str(e)}"
+            error_message = f"LM Studio error (Unified node): {str(e)}"
             print(error_message)
-            return (error_message,)
+            raise Exception(error_message) from e
         finally:
             # Clean up the temporary image file if it was created
             if temp_path and os.path.exists(temp_path):
@@ -408,7 +431,8 @@ class ExpoLmstudioImageToText:
             # Legacy HTTP mode detected
             return self._process_image_legacy_http(image, user_prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
         
-        # No SDK availability check
+        # Fail fast if LM Studio is not reachable
+        check_lmstudio_connection()
 
         # Set seed
         if seed == -1:
@@ -500,9 +524,9 @@ class ExpoLmstudioImageToText:
                 return (result.content,)
 
         except Exception as e:
-            error_message = f"Error processing with LM Studio: {str(e)}"
+            error_message = f"LM Studio error (Image to Text node): {str(e)}"
             print(error_message)
-            return (error_message,)
+            raise Exception(error_message) from e
         finally:
             if temp_path and os.path.exists(temp_path):
                 try:
@@ -657,7 +681,8 @@ class ExpoLmstudioTextGeneration:
             # Legacy HTTP mode detected
             return self._generate_text_legacy_http(prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
         
-        # No SDK availability check
+        # Fail fast if LM Studio is not reachable
+        check_lmstudio_connection()
 
         # Set seed
         if seed == -1:
@@ -733,9 +758,9 @@ class ExpoLmstudioTextGeneration:
                 return (result.content,)
 
         except Exception as e:
-            error_message = f"Error processing with LM Studio: {str(e)}"
+            error_message = f"LM Studio error (Text Generation node): {str(e)}"
             print(error_message)
-            return (error_message,)
+            raise Exception(error_message) from e
 
     def _generate_text_legacy_http(self, prompt, system_prompt, model, ip_address, port, seed, max_tokens=1000, temperature=0.7, debug=False):
         """Legacy HTTP-based text generation for backward compatibility"""

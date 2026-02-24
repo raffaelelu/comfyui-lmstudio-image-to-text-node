@@ -12,6 +12,7 @@ The nodes offer functionalities including:
 4.  **Model Management:** List available models, load models into memory with a TTL, and unload them.
 5.  **Model Selection:** Dynamically select models based on type (LLM/Vision) and text filters.
 6.  **Setup Assistance:** Helper node for SDK installation check, model listing, and download guidance.
+7.  **Random List Picker:** Paste any newline-separated list of items and randomly select one or many each run — great for injecting random genres, styles, moods, subjects, or any variable into your prompts.
 
 ## Workflow Example
 
@@ -34,6 +35,7 @@ Here's an example of how the LM Studio nodes can be used in a ComfyUI workflow:
 -   Optional streaming output for the Text Generation node.
 -   Debug mode for detailed console logging.
 -   Automatic connection to the LM Studio server (no need to specify IP/Port in nodes).
+-   **Random List Picker** utility node for injecting randomness into prompts — supports weighted items, templates, multi-pick, shuffle, case control, exclusions, and reproducible seeds.
 
 ## Installation
 
@@ -209,6 +211,63 @@ Provides helper actions related to SDK setup and model discovery.
 -   `Result` (STRING): Status message, command guidance, or list of models.
 
 *(Note: `INSTALL SDK` attempts `pip install lmstudio`. `GET MODEL` provides instructions for using the `lms` CLI tool).*
+
+---
+
+### Random List Picker
+
+A general-purpose utility node. Paste any newline-separated list of items and the node randomly selects one (or many) each time the workflow runs, then assembles a ready-to-use prompt string. No LM Studio connection required — works standalone.
+
+**Inputs:**
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `items` | STRING (multiline) | sample genres | One item per line. Append `::weight` for weighted probability (e.g. `jazz::3` is 3× more likely than weight-1 items). |
+| `template` | STRING (multiline) | *(empty)* | Prompt template using `{item}` as a placeholder, e.g. `"Create a {item} track with heavy bass."` Overrides prefix/suffix when non-empty. |
+| `prefix` | STRING | *(empty)* | Text prepended before the chosen item(s). Used when `template` is empty. |
+| `suffix` | STRING | *(empty)* | Text appended after the chosen item(s). Used when `template` is empty. |
+| `exclude` | STRING (multiline) | *(empty)* | Items that must never be chosen, one per line (case-insensitive). |
+| `fallback` | STRING | *(empty)* | Value returned when the list is empty after exclusions apply. |
+| `count` | INT | 1 | Number of **unique** items to pick. Automatically capped at the list size. |
+| `separator` | STRING | `, ` | String used to join multiple picked items. |
+| `case` | COMBO | `original` | Case transformation: `original` \| `uppercase` \| `lowercase` \| `title` \| `sentence`. |
+| `mode` | COMBO | `pick` | `pick` — choose random item(s). `shuffle` — return the entire list in a random order. |
+| `seed` | INT | -1 | Random seed. `-1` = new random result every run; any other value = reproducible. |
+
+**Outputs:**
+
+| Output | Type | Description |
+|---|---|---|
+| `selected_item` | STRING | The chosen item(s), joined with `separator`. |
+| `prompt` | STRING | Fully assembled prompt (template or prefix + item + suffix). Wire this directly into any text input. |
+| `item_count` | INT | Total usable items after exclusions. |
+| `selected_index` | INT | Zero-based index of the first chosen item (`-1` in shuffle mode). |
+
+**Example — random music genre prompt:**
+
+```
+items:
+  rock
+  pop
+  jazz::3
+  classical
+  hip-hop
+
+template:  Create a {item} song with a melancholic mood.
+```
+
+Each run the node draws a weighted-random genre and outputs something like:
+`Create a jazz song with a melancholic mood.`
+
+**Example — pick 3 unique styles:**
+
+```
+count: 3
+separator: ", "
+template: Generate artwork combining {item}.
+```
+
+Output prompt: `Generate artwork combining watercolour, impressionist, cyberpunk.`
 
 ---
 
