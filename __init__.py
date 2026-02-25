@@ -6,7 +6,8 @@ LM Studio Nodes for ComfyUI - Integration with local LLM models
 from .expo_lmstudio_imagetotext import (
     ExpoLmstudioUnified,
     ExpoLmstudioImageToText,
-    ExpoLmstudioTextGeneration
+    ExpoLmstudioTextGeneration,
+    ExpoLmstudioStructuredOutput
 )
 from .random_list_picker import RandomListPicker
 
@@ -15,6 +16,7 @@ NODE_CLASS_MAPPINGS = {
     "Expo Lmstudio Unified": ExpoLmstudioUnified,
     "Expo Lmstudio Image To Text": ExpoLmstudioImageToText,
     "Expo Lmstudio Text Generation": ExpoLmstudioTextGeneration,
+    "Expo Lmstudio Structured Output": ExpoLmstudioStructuredOutput,
     "Random List Picker": RandomListPicker
 }
 
@@ -23,6 +25,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Expo Lmstudio Unified": "LM Studio (Unified)",
     "Expo Lmstudio Image To Text": "LM Studio (Image to Text)",
     "Expo Lmstudio Text Generation": "LM Studio (Text Gen)",
+    "Expo Lmstudio Structured Output": "LM Studio (Structured Output)",
     "Random List Picker": "Random List Picker"
 }
 
