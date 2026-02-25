@@ -203,7 +203,7 @@ class ExpoLmstudioUnified:
                 "image": ("IMAGE",),
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
-                "debug": ("BOOLEAN", {"default": False}),
+                "debug": (["False", "True"], {"default": "False"}),
                 "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
             }
         }
@@ -214,7 +214,7 @@ class ExpoLmstudioUnified:
     CATEGORY = "ComfyExpo/LMStudio"
 
     @classmethod
-    def IS_CHANGED(cls, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
+    def IS_CHANGED(cls, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug="False", timeout_seconds=300):
         m = hashlib.sha256()
         
         m.update(str(text_input).encode())
@@ -236,7 +236,9 @@ class ExpoLmstudioUnified:
         
         return m.hexdigest()
 
-    def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
+    def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug="False", timeout_seconds=300):
+        # Normalize debug from combo string to bool
+        debug = (debug == "True")
         # Fail fast if LM Studio is not reachable
         check_lmstudio_connection()
 
@@ -380,7 +382,7 @@ class ExpoLmstudioImageToText:
             "optional": {
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
-                "debug": ("BOOLEAN", {"default": False}),
+                "debug": (["False", "True"], {"default": "False"}),
                 "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
                 # Legacy parameters for backward compatibility
                 "model": ("STRING", {"default": ""}),  # Old parameter name
@@ -395,7 +397,7 @@ class ExpoLmstudioImageToText:
     CATEGORY = "ComfyExpo/I2T"
 
     @classmethod
-    def IS_CHANGED(cls, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+    def IS_CHANGED(cls, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug="False", timeout_seconds=300, model="", ip_address="", port=0):
         m = hashlib.sha256()
         
         m.update(str(user_prompt).encode())
@@ -419,7 +421,9 @@ class ExpoLmstudioImageToText:
         
         return m.hexdigest()
 
-    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+    def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug="False", timeout_seconds=300, model="", ip_address="", port=0):
+        # Normalize debug from combo string to bool
+        debug = (debug == "True")
         # Handle backward compatibility
         # If legacy parameters are provided, show a deprecation warning and try to use them
         if model and not model_key:
@@ -635,7 +639,7 @@ class ExpoLmstudioTextGeneration:
             "optional": {
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
-                "debug": ("BOOLEAN", {"default": False}),
+                "debug": (["False", "True"], {"default": "False"}),
                 "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
                 # Legacy parameters for backward compatibility
                 "model": ("STRING", {"default": ""}),  # Old parameter name
@@ -650,7 +654,7 @@ class ExpoLmstudioTextGeneration:
     CATEGORY = "ComfyExpo/Text"
 
     @classmethod
-    def IS_CHANGED(cls, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+    def IS_CHANGED(cls, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug="False", timeout_seconds=300, model="", ip_address="", port=0):
         m = hashlib.sha256()
         
         m.update(str(prompt).encode())
@@ -669,7 +673,9 @@ class ExpoLmstudioTextGeneration:
         
         return m.hexdigest()
 
-    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
+    def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug="False", timeout_seconds=300, model="", ip_address="", port=0):
+        # Normalize debug from combo string to bool
+        debug = (debug == "True")
         # Handle backward compatibility
         # If legacy parameters are provided, show a deprecation warning and try to use them
         if model and not model_key:
