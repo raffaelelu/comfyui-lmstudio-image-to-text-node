@@ -21,6 +21,9 @@ import hashlib
 import random
 import concurrent.futures
 
+_ENV_API_TOKEN = "LM_API_TOKEN"
+api_token = os.environ.get(_ENV_API_TOKEN, "lm-studio")
+
 try:
     import lmstudio as lms
 except Exception:
@@ -596,7 +599,7 @@ class ExpoLmstudioImageToText:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer lm-studio"
+                "Authorization": f"Bearer {api_token}"
             }
 
             url = f"http://{ip_address}:{port}/v1/chat/completions"
@@ -807,7 +810,7 @@ class ExpoLmstudioTextGeneration:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer lm-studio"
+                "Authorization": f"Bearer {api_token}"
             }
 
             url = f"http://{ip_address}:{port}/v1/chat/completions"
