@@ -140,6 +140,7 @@ Generates text descriptions for images using vision models.
 -   `Description` (STRING): The generated text description.
 
 **ATTENTION:** THE TEXT FILTER WORKS HERE TO REMOVE ALL THINKING AND REASONING CONTENT FROM THE GENERATED TEXT. IF YOUR WORKFLOW IS TO CREATE DATASETS FOR LORA TRAINING, PLEASE USE THIS NODE.
+
 ---
 
 ### LM Studio Text Gen (Expo)
