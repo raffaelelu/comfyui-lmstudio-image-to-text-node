@@ -36,7 +36,7 @@ Here's an example of how the LM Studio nodes can be used in a ComfyUI workflow:
 -   Debug mode for detailed console logging.
 -   Automatic connection to the LM Studio server (no need to specify IP/Port in nodes).
 -   **Random List Picker** utility node for injecting randomness into prompts — supports weighted items, templates, multi-pick, shuffle, case control, exclusions, and reproducible seeds.
--   **NEW**：Remove all thinking and reasoning content from output text in the **Image to Text node**, change the default user_prompt as well. Only keep the pure description will be kept as output.
+-   **NEW**：Remove all thinking and reasoning content from output text in the **Image to Text node**, change the default user_prompt as well. Only the pure description will be kept as output.
 
 ## Installation
 
