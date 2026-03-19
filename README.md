@@ -36,6 +36,7 @@ Here's an example of how the LM Studio nodes can be used in a ComfyUI workflow:
 -   Debug mode for detailed console logging.
 -   Automatic connection to the LM Studio server (no need to specify IP/Port in nodes).
 -   **Random List Picker** utility node for injecting randomness into prompts — supports weighted items, templates, multi-pick, shuffle, case control, exclusions, and reproducible seeds.
+-   **NEW**：Remove all thinking and reasoning content from output text in the **Image to Text node**, change the default user_prompt as well. Only keep the pure description will be kept as output.
 
 ## Installation
 
@@ -92,6 +93,7 @@ When old parameters are detected, the nodes will:
 ## Usage
 
 Add the nodes to your workflow by right-clicking the canvas and searching for their names (e.g., "LM Studio Unified (Expo)").
+**For LoRA Dataset generation**: use Image-to-text node instead of the unified node. DO NOT remove the "FINAL_DESCRIPTION" tag in the default prompt. In the output txt file, the content before and include the tag will be removed automatically for a clean description for the corresponding image.
 
 ---
 
@@ -310,3 +312,4 @@ This project is licensed under the MIT License - see the `LICENSE` file for deta
 -   Built upon the ComfyUI framework.
 -   Utilizes the official LM Studio Python SDK.
 -   Inspired by LM Studio's capabilities and examples.
+-   Text filter Contributor: RaffaeleLu
