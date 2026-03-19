@@ -21,9 +21,6 @@ import hashlib
 import random
 import concurrent.futures
 
-_ENV_API_TOKEN = "LM_API_TOKEN"
-api_token = os.environ.get(_ENV_API_TOKEN, "lm-studio")
-
 try:
     import lmstudio as lms
 except Exception:
@@ -32,7 +29,7 @@ except Exception:
 
 # Default models to use
 DEFAULT_LLM = "gemma-3-4b-it-qat"
-DEFAULT_VISION = "qwen/qwen3-vl-8b"
+DEFAULT_VISION = "qwen2-vl-2b-instruct"
 
 # Try to import LM Studio SDK
 # lmstudio imported above in a try/except; keep lms as None when unavailable
@@ -122,28 +119,6 @@ def get_model_info_with_fallback(model_key, debug=False):
         if debug:
             print(f"Debug: Exception in fallback detection: {e}")
         return None  # Let the client use default
-
-
-def check_lmstudio_connection():
-    """
-    Verify that LM Studio is reachable before attempting generation.
-    Raises a clear exception if the server is not running so ComfyUI halts
-    the pipeline rather than passing an error string to downstream nodes.
-    """
-    if lms is None:
-        raise Exception(
-            "LM Studio SDK (lmstudio) is not installed. "
-            "Run: pip install lmstudio"
-        )
-    try:
-        with lms.Client() as client:  # noqa: F841  – connection test only
-            pass
-    except Exception as e:
-        raise Exception(
-            f"Cannot connect to LM Studio. "
-            f"Please make sure LM Studio is open and the local server is enabled. "
-            f"(Error: {e})"
-        ) from e
 
 
 def safe_get_stats_info(result, debug=False):
@@ -240,10 +215,7 @@ class ExpoLmstudioUnified:
         return m.hexdigest()
 
     def process_input(self, text_input, system_prompt, model_key, auto_unload, unload_delay, seed, image=None, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
-        # Normalize debug: accept both bool (BOOLEAN widget) and string (legacy/fallback)
-        debug = debug if isinstance(debug, bool) else str(debug).lower() == "true"
-        # Fail fast if LM Studio is not reachable
-        check_lmstudio_connection()
+        # No SDK availability check
 
         # Check if we have valid inputs
         has_image = image is not None
@@ -355,9 +327,9 @@ class ExpoLmstudioUnified:
                 return (result.content,)
 
         except Exception as e:
-            error_message = f"LM Studio error (Unified node): {str(e)}"
+            error_message = f"Error processing with LM Studio: {str(e)}"
             print(error_message)
-            raise Exception(error_message) from e
+            return (error_message,)
         finally:
             # Clean up the temporary image file if it was created
             if temp_path and os.path.exists(temp_path):
@@ -375,7 +347,7 @@ class ExpoLmstudioImageToText:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "user_prompt": ("STRING", {"default": "Describe this image in detail"}),
+                "user_prompt": ("STRING", {"default": "Describe this image in detail. Always start your final description with the exact tag 'FINAL_DESCRIPTION:' and then provide the description only. Do not include any analysis, drafting, or extra text before or after the tag"}),
                 "system_prompt": ("STRING", {"default": "This is a chat between a user and an assistant. The assistant is an expert in describing images, with detail and accuracy"}),
                 "model_key": ("STRING", {"default": DEFAULT_VISION}),
                 "auto_unload": (["True", "False"], {"default": "True"}),
@@ -425,8 +397,6 @@ class ExpoLmstudioImageToText:
         return m.hexdigest()
 
     def process_image(self, image, user_prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
-        # Normalize debug: accept both bool (BOOLEAN widget) and string (legacy/fallback)
-        debug = debug if isinstance(debug, bool) else str(debug).lower() == "true"
         # Handle backward compatibility
         # If legacy parameters are provided, show a deprecation warning and try to use them
         if model and not model_key:
@@ -438,8 +408,7 @@ class ExpoLmstudioImageToText:
             # Legacy HTTP mode detected
             return self._process_image_legacy_http(image, user_prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
         
-        # Fail fast if LM Studio is not reachable
-        check_lmstudio_connection()
+        # No SDK availability check
 
         # Set seed
         if seed == -1:
@@ -528,12 +497,34 @@ class ExpoLmstudioImageToText:
                     except Exception as unload_err:
                         print(f"Warning: Failed to unload model: {unload_err}")
 
-                return (result.content,)
+                raw_text = result.content
+                marker = "FINAL_DESCRIPTION:"
+
+                # 查找最后一个标记的位置
+                pos = raw_text.rfind(marker)
+                if pos != -1:
+                    # 截取标记之后的内容，并去除开头的空白字符
+                    filtered_text = raw_text[pos + len(marker):].lstrip()
+                else:
+                    # 如果没有找到标记，则保留原始文本（或可根据需要处理）
+                    filtered_text = raw_text
+
+                filtered_text = filtered_text.strip()
+
+                if debug:
+                    print("--- Original output ---")
+                    print(raw_text)
+                    print("--- After extracting FINAL_DESCRIPTION ---")
+                    print(filtered_text)
+
+                return (filtered_text,)
+
+                #return (result.content,)
 
         except Exception as e:
-            error_message = f"LM Studio error (Image to Text node): {str(e)}"
+            error_message = f"Error processing with LM Studio: {str(e)}"
             print(error_message)
-            raise Exception(error_message) from e
+            return (error_message,)
         finally:
             if temp_path and os.path.exists(temp_path):
                 try:
@@ -599,7 +590,7 @@ class ExpoLmstudioImageToText:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_token}"
+                "Authorization": "Bearer lm-studio"
             }
 
             url = f"http://{ip_address}:{port}/v1/chat/completions"
@@ -618,6 +609,7 @@ class ExpoLmstudioImageToText:
 
             if debug:
                 print(f"Debug: Generated text: {generated_text[:100]}...")
+
 
             return (generated_text,)
 
@@ -677,8 +669,6 @@ class ExpoLmstudioTextGeneration:
         return m.hexdigest()
 
     def generate_text(self, prompt, system_prompt, model_key, auto_unload, unload_delay, seed, max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300, model="", ip_address="", port=0):
-        # Normalize debug: accept both bool (BOOLEAN widget) and string (legacy/fallback)
-        debug = debug if isinstance(debug, bool) else str(debug).lower() == "true"
         # Handle backward compatibility
         # If legacy parameters are provided, show a deprecation warning and try to use them
         if model and not model_key:
@@ -690,8 +680,7 @@ class ExpoLmstudioTextGeneration:
             # Legacy HTTP mode detected
             return self._generate_text_legacy_http(prompt, system_prompt, model_key or model, ip_address, port, seed, max_tokens, temperature, debug)
         
-        # Fail fast if LM Studio is not reachable
-        check_lmstudio_connection()
+        # No SDK availability check
 
         # Set seed
         if seed == -1:
@@ -767,9 +756,9 @@ class ExpoLmstudioTextGeneration:
                 return (result.content,)
 
         except Exception as e:
-            error_message = f"LM Studio error (Text Generation node): {str(e)}"
+            error_message = f"Error processing with LM Studio: {str(e)}"
             print(error_message)
-            raise Exception(error_message) from e
+            return (error_message,)
 
     def _generate_text_legacy_http(self, prompt, system_prompt, model, ip_address, port, seed, max_tokens=1000, temperature=0.7, debug=False):
         """Legacy HTTP-based text generation for backward compatibility"""
@@ -810,7 +799,7 @@ class ExpoLmstudioTextGeneration:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_token}"
+                "Authorization": "Bearer lm-studio"
             }
 
             url = f"http://{ip_address}:{port}/v1/chat/completions"
@@ -838,222 +827,14 @@ class ExpoLmstudioTextGeneration:
             return (error_message,)
 
 
-class ExpoLmstudioStructuredOutput:
-    """
-    LM Studio Structured Output node for ComfyUI.
-
-    Sends a prompt (and optional image) to an LM Studio model and enforces a
-    JSON response that matches the provided JSON Schema.  The full JSON string
-    is emitted on the first output pin; up to six individual key values are
-    extracted and emitted on value_1 … value_6 according to the newline-
-    separated list in ``output_keys``.
-    """
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "text_input": ("STRING", {
-                    "multiline": True,
-                    "default": "Describe this image.",
-                    "tooltip": "The user message / prompt sent to the model.",
-                }),
-                "json_schema": ("STRING", {
-                    "multiline": True,
-                    "default": '{\n  "type": "object",\n  "properties": {\n    "subject": {"type": "string"},\n    "style": {"type": "string"},\n    "mood": {"type": "string"},\n    "tags": {"type": "array", "items": {"type": "string"}}\n  },\n  "required": ["subject", "style", "mood", "tags"]\n}',
-                    "tooltip": "A valid JSON Schema object. The model will be constrained to return JSON matching this schema.",
-                }),
-                "output_keys": ("STRING", {
-                    "multiline": True,
-                    "default": "subject\nstyle\nmood\ntags",
-                    "tooltip": "Newline-separated list of top-level JSON keys to extract into value_1 … value_6 outputs (in order). Array values are joined with ', '.",
-                }),
-                "system_prompt": ("STRING", {
-                    "default": "You are a helpful AI assistant. Always respond with valid JSON.",
-                }),
-                "model_key": ("STRING", {"default": DEFAULT_LLM}),
-                "auto_unload": (["True", "False"], {"default": "True"}),
-                "unload_delay": ("INT", {"default": 0, "min": 0, "max": 3600, "step": 1}),
-                "seed": ("INT", {"default": -1, "min": -1, "max": 0xffffffffffffffff}),
-            },
-            "optional": {
-                "image": ("IMAGE",),
-                "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 4096}),
-                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0}),
-                "debug": ("BOOLEAN", {"default": False}),
-                "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 3600, "step": 1}),
-            },
-        }
-
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("json_output", "value_1", "value_2", "value_3", "value_4", "value_5", "value_6")
-    FUNCTION = "generate_structured"
-    CATEGORY = "ComfyExpo/LMStudio"
-
-    @classmethod
-    def IS_CHANGED(cls, text_input, json_schema, output_keys, system_prompt, model_key,
-                   auto_unload, unload_delay, seed, image=None,
-                   max_tokens=1000, temperature=0.7, debug=False, timeout_seconds=300):
-        import json as _json
-        m = hashlib.sha256()
-        for val in (text_input, json_schema, output_keys, system_prompt, model_key,
-                    auto_unload, unload_delay, seed, max_tokens, temperature, debug, timeout_seconds):
-            m.update(str(val).encode())
-        if image is not None:
-            m.update(np.array(image).tobytes())
-        return m.hexdigest()
-
-    def generate_structured(self, text_input, json_schema, output_keys, system_prompt,
-                            model_key, auto_unload, unload_delay, seed,
-                            image=None, max_tokens=1000, temperature=0.7,
-                            debug=False, timeout_seconds=300):
-        import json as _json
-
-        debug = debug if isinstance(debug, bool) else str(debug).lower() == "true"
-        check_lmstudio_connection()
-
-        # Parse the schema
-        try:
-            parsed_schema = _json.loads(json_schema)
-        except _json.JSONDecodeError as exc:
-            raise Exception(f"Structured Output: invalid JSON Schema — {exc}") from exc
-
-        # Parse requested output keys (up to 6)
-        keys = [k.strip() for k in output_keys.splitlines() if k.strip()][:6]
-
-        if seed == -1:
-            seed = random.randint(0, 0xffffffffffffffff)
-        random.seed(seed)
-
-        if debug:
-            print(f"Debug: [StructuredOutput] model={model_key}, keys={keys}")
-            print(f"Debug: [StructuredOutput] schema={_json.dumps(parsed_schema, indent=2)}")
-
-        temp_path = None
-        try:
-            model_key_to_use = get_model_info_with_fallback(model_key, debug)
-
-            with lms.Client() as client:
-                if model_key_to_use:
-                    if auto_unload == "True" and unload_delay > 0:
-                        model_obj = client.llm.model(model_key_to_use, ttl=unload_delay)
-                    else:
-                        model_obj = client.llm.model(model_key_to_use)
-                else:
-                    model_obj = client.llm.model()
-
-                chat = lms.Chat(system_prompt)
-
-                if image is not None:
-                    pil_image = Image.fromarray(np.uint8(image[0] * 255))
-                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                        temp_path = tmp.name
-                        pil_image.save(temp_path, format='JPEG')
-                    image_handle = client.files.prepare_image(temp_path)
-                    chat.add_user_message(text_input, images=[image_handle])
-                    if debug:
-                        print(f"Debug: [StructuredOutput] added image + text to chat")
-                else:
-                    chat.add_user_message(text_input)
-
-                # Build config with structured output constraint
-                config = {
-                    "temperature": temperature,
-                    "maxTokens": max_tokens,
-                    "seed": seed,
-                    "structured": {
-                        "type": "json",
-                        "jsonSchema": parsed_schema,
-                    },
-                }
-
-                if debug:
-                    print(f"Debug: [StructuredOutput] sending request with structured config")
-
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(model_obj.respond, chat, config=config)
-                    try:
-                        result = future.result(timeout=timeout_seconds)
-                    except concurrent.futures.TimeoutError:
-                        err = f"Error: LM Studio model response timed out after {timeout_seconds} seconds."
-                        print(err)
-                        empty = ("",) * 6
-                        return (err,) + empty
-
-                json_string = result.content.strip()
-
-                if debug:
-                    print(f"Debug: [StructuredOutput] raw response: {json_string[:200]}")
-
-                # Parse the returned JSON and extract key values
-                try:
-                    parsed = _json.loads(json_string)
-                except _json.JSONDecodeError:
-                    # Model may have wrapped JSON in a code fence — strip it
-                    cleaned = json_string
-                    if cleaned.startswith("```"):
-                        cleaned = cleaned.split("\n", 1)[-1]
-                    if cleaned.endswith("```"):
-                        cleaned = cleaned.rsplit("```", 1)[0]
-                    try:
-                        parsed = _json.loads(cleaned.strip())
-                        json_string = cleaned.strip()
-                        if debug:
-                            print("Debug: [StructuredOutput] JSON parsed after stripping code fence")
-                    except _json.JSONDecodeError as exc2:
-                        if debug:
-                            print(f"Debug: [StructuredOutput] JSON parse failed: {exc2}")
-                        parsed = {}
-
-                def _to_str(val):
-                    """Convert a JSON value to a plain string."""
-                    if isinstance(val, list):
-                        return ", ".join(str(v) for v in val)
-                    if isinstance(val, dict):
-                        return _json.dumps(val)
-                    return str(val) if val is not None else ""
-
-                values = []
-                for k in keys:
-                    values.append(_to_str(parsed.get(k, "")))
-                # Pad to 6 slots
-                while len(values) < 6:
-                    values.append("")
-
-                stats_info = safe_get_stats_info(result, debug)
-                if debug:
-                    print(f"Debug: [StructuredOutput] tokens={stats_info['predicted_tokens']}, ttft={stats_info['time_to_first_token']}s")
-
-                if auto_unload == "True" and unload_delay == 0:
-                    try:
-                        model_obj.unload()
-                    except Exception as unload_err:
-                        print(f"Warning: Failed to unload model: {unload_err}")
-
-                return (json_string, values[0], values[1], values[2], values[3], values[4], values[5])
-
-        except Exception as e:
-            error_message = f"LM Studio error (Structured Output node): {str(e)}"
-            print(error_message)
-            raise Exception(error_message) from e
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except Exception as cleanup_err:
-                    print(f"Warning: Failed to remove temporary file {temp_path}: {cleanup_err}")
-
-
 NODE_CLASS_MAPPINGS = {
     "ExpoLmstudioUnified": ExpoLmstudioUnified,
     "ExpoLmstudioImageToText": ExpoLmstudioImageToText,
     "ExpoLmstudioTextGeneration": ExpoLmstudioTextGeneration,
-    "ExpoLmstudioStructuredOutput": ExpoLmstudioStructuredOutput,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ExpoLmstudioUnified": "Expo LM Studio Unified",
     "ExpoLmstudioImageToText": "Expo LM Studio Image to Text",
     "ExpoLmstudioTextGeneration": "Expo LM Studio Text Generation",
-    "ExpoLmstudioStructuredOutput": "Expo LM Studio Structured Output",
 }
